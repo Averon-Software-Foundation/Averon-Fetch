@@ -1,3 +1,10 @@
+//! Averon Fetch: a lightweight Linux system information utility.
+//!
+//! The crate is primarily driven by the `averon-fetch` and `av-fetch`
+//! binaries. Each information row comes from a [`modules::Module`]
+//! implementation, while collectors in [`system`] read the underlying data.
+//! [`config::Config`] controls visibility, ordering, labels, and colours.
+
 pub mod cli;
 pub mod colour;
 pub mod config;
@@ -13,12 +20,13 @@ use clap::Parser;
 
 pub fn run() {
     let args = cli::Args::parse();
-    diag::set_show_errors(args.show_errors);
 
     let is_tty = terminal::is_stdout_tty();
     let colour_environment = colour::ColourEnvironment::from_env();
     let config_path = config::Config::resolve_path(args.config.as_deref());
     let config = config::Config::load_from(&config_path);
+    // Either the CLI flag or the config can request diagnostics.
+    diag::set_show_errors(args.show_errors || config.general.show_errors);
     let palette = colour::Palette::from_config(&config);
 
     if args.config_path {

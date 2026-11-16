@@ -121,16 +121,57 @@ fn detect_window_manager() -> Option<String> {
     }
 
     if let Ok(wmde) = env::var("WMDE") {
-        return Some(wmde);
+        if !wmde.trim().is_empty() {
+            return Some(wmde);
+        }
     }
 
     if env::var("DISPLAY").is_ok() {
-        if let Some(out) = spawn_version("xprop", &["-root", "_NET_SUPPORTING_WM_CHECK"]) {
-            let _ = out;
+        if let Some(wm) = detect_window_manager_from_xprop() {
+            return Some(wm);
         }
     }
 
     None
+}
+
+/// Extract the value from a single `xprop` output line.
+fn xprop_value(output: &str) -> Option<String> {
+    let (_, value) = output.lines().find_map(|line| line.split_once('='))?;
+    let value = value.trim().trim_matches('"').trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value.to_string())
+    }
+}
+
+/// Ask the running X server for the window manager's advertised name.
+fn detect_window_manager_from_xprop() -> Option<String> {
+    let root = Command::new("xprop")
+        .args(["-root", "_NET_SUPPORTING_WM_CHECK"])
+        .output()
+        .ok()?;
+    if !root.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&root.stdout);
+    let id = stdout
+        .split_once("window id #")?
+        .1
+        .split_whitespace()
+        .next()?;
+
+    let name = Command::new("xprop")
+        .args(["-id", id, "_NET_WM_NAME"])
+        .output()
+        .ok()?;
+    if !name.status.success() {
+        return None;
+    }
+
+    xprop_value(&String::from_utf8_lossy(&name.stdout))
 }
 
 struct GtkSettings {
@@ -225,5 +266,28 @@ pub fn collect() -> DesktopInfo {
         icon_theme: gtk.icon_theme,
         cursor_theme: gtk.cursor_theme,
         font: gtk.font,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_ini_section() {
+        let content = "[Settings]\ngtk-theme-name=Adwaita\n\n[Other]\ngtk-theme-name=Ignored\n";
+        let settings = parse_ini_section(content, "Settings");
+        assert_eq!(
+            settings.get("gtk-theme-name").map(String::as_str),
+            Some("Adwaita")
+        );
+    }
+
+    #[test]
+    fn test_xprop_value() {
+        let output = "_NET_WM_NAME(UTF8_STRING) = \"KWin\"\n";
+        assert_eq!(xprop_value(output), Some(String::from("KWin")));
+        assert_eq!(xprop_value("_NET_WM_NAME:  not found."), None);
+        assert_eq!(xprop_value("_NET_WM_NAME(UTF8_STRING) = \"\""), None);
     }
 }

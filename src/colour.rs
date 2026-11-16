@@ -26,10 +26,15 @@ impl Rgb {
                 (r * 17, g * 17, b * 17)
             }
             6 => {
-                let r = u8::from_str_radix(&value[0..2], 16).ok()?;
-                let g = u8::from_str_radix(&value[2..4], 16).ok()?;
-                let b = u8::from_str_radix(&value[4..6], 16).ok()?;
-                (r, g, b)
+                // Slice bytes rather than the string so invalid UTF-8
+                // boundaries cannot panic on non-ASCII input.
+                let bytes = value.as_bytes();
+                let component = |range: std::ops::Range<usize>| {
+                    std::str::from_utf8(&bytes[range])
+                        .ok()
+                        .and_then(|part| u8::from_str_radix(part, 16).ok())
+                };
+                (component(0..2)?, component(2..4)?, component(4..6)?)
             }
             _ => return None,
         };
@@ -41,7 +46,9 @@ impl Rgb {
             if self.r < 8 {
                 return 16;
             }
-            if self.r > 248 {
+            // 248..=255 all round to the white end of the grey ramp. Keeping
+            // the cutoff at 247 avoids 232 + 24 overflowing u8 for r = 248.
+            if self.r > 247 {
                 return 231;
             }
             return 232 + ((self.r as u16 - 8) / 10) as u8;
@@ -241,9 +248,19 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_ignores_non_ascii_without_panicking() {
+        // Six bytes, but not valid ASCII and the byte boundaries fall inside
+        // multi-byte characters. This used to panic on string slicing.
+        assert_eq!(Rgb::parse("€€"), None);
+        assert_eq!(Rgb::parse("#ééé"), None);
+    }
+
+    #[test]
     fn test_ansi256_conversion() {
         assert_eq!(Rgb::new(0, 0, 0).ansi256(), 16);
         assert_eq!(Rgb::new(255, 255, 255).ansi256(), 231);
+        assert_eq!(Rgb::new(248, 248, 248).ansi256(), 231);
+        assert_eq!(Rgb::new(247, 247, 247).ansi256(), 255);
 
         assert!((232..=255).contains(&Rgb::new(128, 128, 128).ansi256()));
     }

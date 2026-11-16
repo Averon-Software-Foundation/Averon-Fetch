@@ -2,10 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, Dev ]
     tags: [ 'v*' ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, Dev ]
   workflow_dispatch:
 
 permissions:
