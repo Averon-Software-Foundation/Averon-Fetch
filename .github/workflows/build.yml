@@ -1,11 +1,14 @@
 name: CI
 
 on:
+  # Every branch gets CI so each pushed commit is checked. Tags are included
+  # so release candidates are tested before the release jobs run.
   push:
-    branches: [ main, Dev ]
+    branches: [ '**' ]
     tags: [ 'v*' ]
+  # All pull requests, regardless of their target branch.
   pull_request:
-    branches: [ main, Dev ]
+    branches: [ '**' ]
   workflow_dispatch:
 
 permissions:
