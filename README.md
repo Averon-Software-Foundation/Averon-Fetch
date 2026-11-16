@@ -2,7 +2,7 @@
 
 A modern, lightweight system information utility written in Rust.
 
-Developed by [Averon Software Foundation](https://github.com/AveronSoftwareFoundation).
+Developed by [Averon Software Foundation]([https://github.com/AveronSoftwareFoundation](https://github.com/Averon-Software-Foundation/)).
 
 Averon Fetch displays detailed system information in the terminal with a clean, structured layout. It is designed as an independent alternative to tools such as Fastfetch, with its own aesthetic and configuration system built from the ground up using Rust.
 
@@ -26,28 +26,28 @@ Averon Fetch displays detailed system information in the terminal with a clean, 
 ## Terminal Output Example
 
 ```
-         ▄▄▄▄▄▄                josh@hostname
+         ▄▄▄▄▄▄                josh@joshpc
        ▄█████████▄▄            ────────────────────
-      ██████  ████████         OS              : Averon Linux x86_64
+      ██████  ████████         OS              : CachyOS x86_64
      ████      ████████        Host            : B550 EAGLE
     ████        ▐████████      Kernel          : Linux 6.11.3
    ████           ████████     Uptime          : 4 hours, 23 minutes
   ████             ████████    Packages        : 1450 (pacman), 20 (flatpak)
  ████               ████████   Shell           : fish 3.7.0
  ████▄▄▄▄▄▄▄▄▄▄▄▄▄▄████████    Terminal        : konsole
-  ████████████████████████     Display         : Acer XB273 GX 2560x1440 @ 165Hz
+  ████████████████████████       Display         : Acer XB273 GX 2560x1440 @ 165Hz
    ██████         ████████     Desktop         : KDE Plasma 6.2
     ████           ███████     WM              : KWin
-     ██             ██████     Display Server  : Wayland
-                   █████       CPU             : AMD Ryzen 7 5800X (8C/16T) @ 3.80 GHz
-                    ████       CPU Temp        : 45.0 °C
-                               GPU             : NVIDIA GeForce RTX 5060 Ti
-                               Memory          : 8.51 GiB / 15.53 GiB (55%)
-                               Swap            : 1.88 GiB / 15.53 GiB (12%)
-                               Disk (/)        : 282.00 GiB / 620.00 GiB (45%)
-                               Local IP        : 192.168.1.100 (eth0)
-                               BIOS            : F14 (B550 EAGLE)
-                               Locale          : en_GB.UTF-8
+     ██             ██████    Display Server  : Wayland
+                   █████      CPU             : AMD Ryzen 7 5800X (8C/16T) @ 3.80 GHz
+                    ████      CPU Temp        : 45.0 °C
+                             GPU             : NVIDIA GeForce RTX 5060 Ti
+                             Memory          : 8.51 GiB / 15.53 GiB (55%)
+                             Swap            : 1.88 GiB / 15.53 GiB (12%)
+                             Disk (/)        : 282.00 GiB / 620.00 GiB (45%)
+                             Local IP        : 192.168.1.100 (eth0)
+                             BIOS            : F14 (B550 EAGLE)
+                             Locale          : en_GB.UTF-8
 ```
 
 ---
@@ -70,6 +70,10 @@ Two binaries are built: `averon-fetch` and the shorter `av-fetch`.
 ```sh
 cargo install averon-fetch
 ```
+**OR**
+```sh
+cargo install av-fetch
+```
 
 ### Arch Linux - AUR (planned)
 
@@ -80,6 +84,7 @@ yay -S averon-fetch
 ---
 
 ## Usage
+*Vice versa for av-fetch*
 
 ```
 averon-fetch                                     Display system information
@@ -306,18 +311,6 @@ averon-fetch --format json
 ```
 
 JSON output contains no ANSI sequences and never includes logo artwork.
-
----
-
-## Supported Platforms
-
-| Platform | Status |
-|----------|--------|
-| Linux x86_64 | Supported |
-| Linux ARM64 | Planned |
-| Windows x86_64 | Planned |
-| macOS ARM64 | Planned |
-| macOS x86_64 | Planned |
 
 ---
 
