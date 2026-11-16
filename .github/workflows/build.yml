@@ -1,28 +1,97 @@
-name: Build and Test
+name: CI
 
 on:
   push:
     branches: [ main, develop ]
+    tags: [ 'v*' ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One run per ref. Pull requests cancel superseded runs, branch and tag
+  # pushes are allowed to finish so a release build is never cancelled.
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  test:
+    name: Test (${{ matrix.name }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.image }}
     strategy:
+      # Report every combination independently instead of stopping early.
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        rust: [stable]
+        include:
+          # The official Arch Linux image is amd64-only, so Arch is covered
+          # there and arm64 is covered by Debian on a native arm64 runner.
+          - name: Arch Linux
+            slug: arch
+            distro: arch
+            arch: x86_64
+            runner: ubuntu-latest
+            image: archlinux:latest
+          - name: Debian
+            slug: debian
+            distro: debian
+            arch: x86_64
+            runner: ubuntu-latest
+            image: debian:stable-slim
+          - name: Debian
+            slug: debian-arm64
+            distro: debian
+            arch: aarch64
+            runner: ubuntu-24.04-arm
+            image: debian:stable-slim
 
     steps:
+      - name: Install dependencies (Arch Linux)
+        if: matrix.distro == 'arch'
+        run: |
+          pacman -Sy --noconfirm --needed archlinux-keyring
+          pacman -Su --noconfirm --needed git base-devel rust
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+
+      - name: Install dependencies (Debian)
+        if: matrix.distro == 'debian'
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl ca-certificates build-essential
+
+      - name: Install Rust toolchain (Debian)
+        if: matrix.distro == 'debian'
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable \
+                --component rustfmt --component clippy
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          cargo fmt --version
+          cargo clippy --version
+
+      # The workspace is mounted from the host, so git needs it trusted
+      # before checkout can operate on it.
+      - name: Trust workspace directory
+        run: git config --global --add safe.directory '*'
+
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: ${{ matrix.rust }}
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -30,44 +99,117 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          key: ${{ matrix.slug }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Build (debug)
-        run: cargo build
-
-      - name: Build (release)
-        run: cargo build --release
-
-      - name: Run tests
-        run: cargo test
+            ${{ matrix.slug }}-cargo-
 
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
-      - name: Run clippy
-        run: cargo clippy -- -D warnings
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Build (debug)
+        run: cargo build --locked
+
+      - name: Build (release)
+        run: cargo build --locked --release
+
+      - name: Run tests
+        run: cargo test --locked --all-targets
+
+      - name: Smoke test binaries
+        run: |
+          ./target/debug/averon-fetch --version
+          ./target/debug/av-fetch --version
+          ./target/debug/averon-fetch --format json > /dev/null
+          ./target/debug/averon-fetch --no-logo --no-color > /dev/null
 
   release:
-    name: Release Build
-    runs-on: ubuntu-latest
+    name: Release build (${{ matrix.arch }})
+    # Build releases on Debian so the shipped binaries link against an older
+    # glibc and run on Arch and other distributions too.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: build
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: debian:stable-slim
 
     steps:
+      - name: Install dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git curl ca-certificates build-essential
+
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Trust workspace directory
+        run: git config --global --add safe.directory '*'
+
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Build release binary
-        run: cargo build --release
+        run: cargo build --locked --release
+
+      - name: Package release
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          arch="$(uname -m)"
+          name="averon-fetch-${version}-linux-${arch}"
+          mkdir -p "dist/${name}"
+          cp target/release/averon-fetch target/release/av-fetch "dist/${name}/"
+          cp README.md LICENSE "dist/${name}/"
+          tar -czf "dist/${name}.tar.gz" -C dist "${name}"
+          rm -rf "dist/${name}"
+          ls -l dist
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: averon-fetch-linux-x86_64
-          path: target/release/averon-fetch
+          name: release-linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-linux-*
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" dist/* --clobber
