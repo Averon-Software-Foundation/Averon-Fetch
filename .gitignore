@@ -1,0 +1,10 @@
+# Rust build output
+/target
+**/*.rs.bk
+
+# Release packaging output
+/dist
+
+# Editor and OS noise
+.DS_Store
+*.swp
