@@ -17,7 +17,7 @@ Averon Fetch displays detailed system information in the terminal with a clean, 
 - 24-bit true colour, 256-colour fallback, and plain-text output
 - Respects `NO_COLOR` and never emits ANSI sequences when piped by default
 - JSON output for scripting and integration
-- Linux-first design with cross-platform support planned
+- Linux-first design with native x86_64 and ARM64 (aarch64) support
 - Cached system queries within a single execution
 - Lightweight startup and minimal subprocess use
 
@@ -53,6 +53,25 @@ Averon Fetch displays detailed system information in the terminal with a clean, 
 ---
 
 ## Installation
+
+### Prebuilt Binaries
+
+Release archives are published for Linux on both x86_64 and ARM64:
+
+```
+averon-fetch-<version>-linux-x86_64.tar.gz
+averon-fetch-<version>-linux-aarch64.tar.gz
+```
+
+Download the archive matching your machine's architecture from the
+[releases page](https://github.com/Averon-Software-Foundation/Averon-Fetch/releases),
+then extract and install:
+
+```sh
+tar -xzf averon-fetch-<version>-linux-<arch>.tar.gz
+sudo install -Dm755 averon-fetch-<version>-linux-<arch>/averon-fetch /usr/local/bin/averon-fetch
+sudo install -Dm755 averon-fetch-<version>-linux-<arch>/av-fetch /usr/local/bin/av-fetch
+```
 
 ### From Source
 
@@ -329,6 +348,10 @@ JSON output contains no ANSI sequences and never includes logo artwork.
 ## Building from Source
 
 **Requirements:** Rust 1.74 or later, Cargo
+
+Builds run natively on x86_64 and ARM64 (aarch64) Linux. Release binaries are
+produced for both architectures on matching runners, so no cross-compilation
+toolchain is required.
 
 ```sh
 cargo build              # debug build
