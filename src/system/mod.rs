@@ -37,6 +37,8 @@ pub struct SystemInfo {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CollectPlan {
+    pub general: bool,
+    pub os: bool,
     pub cpu: bool,
     pub cpu_usage: bool,
     pub cpu_temperature: bool,
@@ -60,6 +62,8 @@ impl CollectPlan {
         let gpu = selection.needs_any(&["gpu", "gpu_usage", "gpu_temperature", "gpu_vram"]);
 
         Self {
+            general: selection.needs_any(&["username", "hostname", "host"]),
+            os: selection.needs_any(&["os", "kernel", "uptime"]),
             cpu: selection.needs_any(&["cpu", "cpu_usage", "cpu_temperature"]),
             cpu_usage: selection.includes("cpu_usage"),
             cpu_temperature: selection.includes("cpu_temperature"),
@@ -81,6 +85,8 @@ impl CollectPlan {
 
     pub fn all() -> Self {
         Self {
+            general: true,
+            os: true,
             cpu: true,
             cpu_usage: true,
             cpu_temperature: true,
@@ -111,8 +117,16 @@ pub fn collect(plan: &CollectPlan) -> SystemInfo {
     }
 
     SystemInfo {
-        general: general::collect(&sys),
-        os: os::collect(),
+        general: if plan.general {
+            general::collect(&sys)
+        } else {
+            general::GeneralInfo::default()
+        },
+        os: if plan.os {
+            os::collect()
+        } else {
+            os::OsInfo::default()
+        },
         cpu: if plan.cpu {
             cpu::collect(&sys, plan.cpu_usage, plan.cpu_temperature)
         } else {
@@ -188,6 +202,7 @@ pub fn collect_all() -> SystemInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     #[test]
     fn test_default_system_info_is_empty() {
@@ -203,8 +218,39 @@ mod tests {
     #[test]
     fn test_collect_plan_all() {
         let plan = CollectPlan::all();
+        assert!(plan.general);
+        assert!(plan.os);
         assert!(plan.gpu_details);
         assert!(plan.packages);
         assert!(plan.audio);
+    }
+
+    #[test]
+    fn test_collect_plan_skips_unneeded_general_and_os_work() {
+        let selection = Selection::default();
+        let plan = CollectPlan::from_selection(&selection);
+        assert!(!plan.general);
+        assert!(!plan.os);
+        assert!(!plan.cpu);
+        assert!(!plan.memory);
+    }
+
+    #[test]
+    fn test_collect_plan_enables_header_and_os_collectors() {
+        let selection = selection_with(&["hostname", "kernel"]);
+        let plan = CollectPlan::from_selection(&selection);
+        assert!(plan.general);
+        assert!(plan.os);
+        assert!(!plan.cpu);
+    }
+
+    fn selection_with(ids: &[&'static str]) -> Selection {
+        // Selection is normally built from config and CLI arguments; tests use
+        // the public resolver with a minimal explicit module list.
+        let args = crate::cli::Args::parse_from(
+            std::iter::once("averon-fetch").chain(ids.iter().flat_map(|id| ["--module", *id])),
+        );
+        let config = crate::config::Config::default();
+        Selection::resolve(&config, &args)
     }
 }

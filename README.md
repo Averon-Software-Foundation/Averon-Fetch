@@ -2,7 +2,7 @@
 
 A modern, lightweight system information utility written in Rust.
 
-Developed by [Averon Software Foundation]([https://github.com/AveronSoftwareFoundation](https://github.com/Averon-Software-Foundation/)).
+Developed by the [Averon Software Foundation](https://github.com/Averon-Software-Foundation).
 
 Averon Fetch displays detailed system information in the terminal with a clean, structured layout. It is designed as an independent alternative to tools such as Fastfetch, with its own aesthetic and configuration system built from the ground up using Rust.
 
@@ -35,19 +35,19 @@ Averon Fetch displays detailed system information in the terminal with a clean, 
   ████             ████████    Packages        : 1450 (pacman), 20 (flatpak)
  ████               ████████   Shell           : fish 3.7.0
  ████▄▄▄▄▄▄▄▄▄▄▄▄▄▄████████    Terminal        : konsole
-  ████████████████████████       Display         : Acer XB273 GX 2560x1440 @ 165Hz
+  ████████████████████████     Display         : Acer XB273 GX 2560x1440 @ 165Hz
    ██████         ████████     Desktop         : KDE Plasma 6.2
     ████           ███████     WM              : KWin
-     ██             ██████    Display Server  : Wayland
-                   █████      CPU             : AMD Ryzen 7 5800X (8C/16T) @ 3.80 GHz
-                    ████      CPU Temp        : 45.0 °C
-                             GPU             : NVIDIA GeForce RTX 5060 Ti
-                             Memory          : 8.51 GiB / 15.53 GiB (55%)
-                             Swap            : 1.88 GiB / 15.53 GiB (12%)
-                             Disk (/)        : 282.00 GiB / 620.00 GiB (45%)
-                             Local IP        : 192.168.1.100 (eth0)
-                             BIOS            : F14 (B550 EAGLE)
-                             Locale          : en_GB.UTF-8
+     ██             ██████     Display Server  : Wayland
+                   █████       CPU             : AMD Ryzen 7 5800X (8C/16T) @ 3.80 GHz
+                    ████       CPU Temp        : 45.0 °C
+                               GPU             : NVIDIA GeForce RTX 5060 Ti
+                               Memory          : 8.51 GiB / 15.53 GiB (55%)
+                               Swap            : 1.88 GiB / 15.53 GiB (12%)
+                               Disk (/)        : 282.00 GiB / 620.00 GiB (45%)
+                               Local IP        : 192.168.1.100 (eth0)
+                               BIOS            : F14 (B550 EAGLE)
+                               Locale          : en_GB.UTF-8
 ```
 
 ---
@@ -76,23 +76,30 @@ sudo install -Dm755 averon-fetch-<version>-linux-<arch>/av-fetch /usr/local/bin/
 ### From Source
 
 ```sh
-git clone https://github.com/AveronSoftwareFoundation/Averon-Fetch.git
+git clone https://github.com/Averon-Software-Foundation/Averon-Fetch.git
 cd Averon-Fetch
-cargo build --release
+cargo build --locked --release
 sudo install -Dm755 target/release/averon-fetch /usr/local/bin/averon-fetch
+sudo install -Dm755 target/release/av-fetch /usr/local/bin/av-fetch
 ```
 
-Two binaries are built: `averon-fetch` and the shorter `av-fetch`.
+Two binaries are built: `averon-fetch` and the shorter `av-fetch`. They are
+identical apart from the command name, so install whichever you prefer.
 
 ### Cargo Install
 
+The crate is not published on crates.io yet. Install directly from a local
+clone or from Git instead:
+
 ```sh
-cargo install averon-fetch
+# From a clone
+cargo install --locked --path .
+
+# Or directly from the repository
+cargo install --locked --git https://github.com/Averon-Software-Foundation/Averon-Fetch
 ```
-**OR**
-```sh
-cargo install av-fetch
-```
+
+Both commands install the `averon-fetch` and `av-fetch` binaries.
 
 ### Arch Linux - AUR (planned)
 
@@ -103,18 +110,20 @@ yay -S averon-fetch
 ---
 
 ## Usage
-*Vice versa for av-fetch*
+
+The examples use `averon-fetch`; replace it with `av-fetch` for the shorter
+command name.
 
 ```
 averon-fetch                                     Display system information
 averon-fetch --help                              Show help
 averon-fetch --version                           Show version
-averon-fetch --logo-only                         Display only the logo
-averon-fetch --logo                              Alias for --logo-only
+averon-fetch --logo                              Display only the logo
+averon-fetch --logo-only                         Alias for --logo
 averon-fetch --no-logo                           Display information without the logo
 averon-fetch --list-modules                      List modules and enabled state
 averon-fetch --module cpu                        Show only CPU information
-averon-fetch --module cpu --module memory        Show CPU and memory in that order
+averon-fetch -m cpu -m memory                    Show CPU and memory in that order
 averon-fetch --all                               Show all modules, ignoring config visibility
 averon-fetch --format json                       Structured JSON output
 averon-fetch --format text                       Terminal text output (default)
@@ -134,6 +143,11 @@ Module names are case-insensitive. Common aliases are accepted, including
 `window_manager` for `wm`, `ip` and `local_ip` for `network`, `motherboard` for
 `bios`, `gpu_util` for `gpu_usage`, and `vram` for `gpu_vram`.
 
+`--module` overrides config visibility, so a disabled module can still be
+requested explicitly. `--all` ignores visibility but keeps the configured
+order. When `--module` is used in text mode, the logo is hidden so only the
+requested rows are printed.
+
 ---
 
 ## Configuration
@@ -150,11 +164,20 @@ If `XDG_CONFIG_HOME` is not set, the path is:
 ~/.config/averon-fetch/config.toml
 ```
 
+`--config PATH` overrides the path for a single run, and supports a leading
+`~`. To see which file would be used, run `averon-fetch --config-path`. To
+print the effective path together with the current contents, run
+`averon-fetch --config` without a value.
+
 Generate a documented default file with:
 
 ```sh
 averon-fetch --generate-config
 ```
+
+This creates the file and its parent directory when missing. It never
+overwrites an existing configuration; if the file is already present it
+reports the path and exits successfully.
 
 A complete example:
 
@@ -233,17 +256,42 @@ Icons = "Icon Theme"
 ```
 
 Logo width and scale are both supported. `scale = 2.0` doubles the built-in
-logo, while `width = 40` sets a target width directly. A custom `custom_ascii`
-block replaces the built-in mark and is used verbatim.
+logo, while `width = 40` sets a target width directly. If both are set,
+`scale` wins. A custom `custom_ascii` block replaces the built-in mark; its
+width is measured from the longest line, and it is coloured with
+`logo_primary` before any padding or truncation needed to fit the terminal.
+
+`arch` is not a standalone row. It controls whether the architecture suffix
+is appended to the OS row. The header modules (`username` and `hostname`) are
+also toggled through `[modules]`, but they render in the header above the
+divider rather than as labelled rows.
+
+Labels can be customised in `[labels]` either by module id (`os`, `disk`,
+`cpu_temperature`) or by the default label (`"Local IP"`, `Icons`). Matching
+by default label is case-insensitive. Labels with spaces must be quoted in
+TOML.
 
 ### Colour behaviour
 
+Colour is resolved in this order:
+
+1. `--pipe` and `--no-color` force plain output.
+2. `--color never` and `--color always` override automatic detection.
+3. `auto` checks `NO_COLOR`, `TERM=dumb`, whether stdout is a terminal, and
+   `[general] colour`.
+4. `[terminal] colour` can still force `never` or `always` from the config.
+
+Further details:
+
 - `auto` (default) uses colour only on an interactive terminal.
-- `NO_COLOR`, `TERM=dumb`, and non-tty output disable colour.
-- `--no-color` and `--pipe` always force plain output.
+- `NO_COLOR` disables automatic colour whenever it is present, even if it is
+  empty. An explicit `--color always` still overrides it.
 - `--color always` is the explicit opt-in that permits ANSI output when piped.
 - `truecolour = false` uses a 256-colour approximation.
 - If the terminal does not advertise 24-bit support, `auto` uses 256 colours.
+  `COLORTERM=truecolor` or `COLORTERM=24bit` enables true colour.
+- `[general] colour = false` is a legacy switch that disables automatic
+  colour; explicit `--color always` still wins.
 
 ---
 
@@ -251,7 +299,7 @@ block replaces the built-in mark and is used verbatim.
 
 | Module | Information |
 |--------|-------------|
-| General | Username, hostname |
+| Username / Hostname | Header line above the divider |
 | OS | Distribution, architecture |
 | Kernel | Linux kernel version |
 | Uptime | System uptime |
@@ -266,7 +314,7 @@ block replaces the built-in mark and is used verbatim.
 | CPU | Model, cores, threads, frequency |
 | CPU Usage | Current CPU utilisation |
 | CPU Temperature | CPU temperature from hwmon or thermal zones |
-| GPU | Model, type, driver |
+| GPU | Model and driver |
 | GPU Usage | Utilisation from sysfs or `nvidia-smi` |
 | GPU Temperature | Temperature from sysfs or `nvidia-smi` |
 | GPU VRAM | Video memory usage |
@@ -283,6 +331,36 @@ block replaces the built-in mark and is used verbatim.
 Modules only emit rows when the required information is available. Missing
 hardware, unsupported drivers, and unreadable files are omitted rather than
 shown with placeholder values.
+
+Some values depend on the session and the available helpers:
+
+- `Display` reads connector state from sysfs. Refresh rate and the primary
+  marker come from `xrandr`, so they are not reported under a pure Wayland
+  session. If no primary display is reported, the first one is treated as
+  primary.
+- `Network` prefers IPv4 and falls back to the first IPv6 address when an
+  interface has no IPv4 address.
+- `CPU Temp`, `GPU Usage`, `GPU Temp`, and `GPU VRAM` require readable sysfs
+  entries or a working `nvidia-smi`.
+- `Desktop`, `WM`, and `Locale` inspect environment variables and common
+  config files; unknown desktops may be reported by their raw
+  `XDG_CURRENT_DESKTOP` value.
+
+---
+
+## Environment Variables
+
+| Variable | Effect |
+|----------|--------|
+| `XDG_CONFIG_HOME` | Base directory for the default config path |
+| `HOME` | Fallback config base and expansion target for `~` |
+| `NO_COLOR` | Disable automatic colour output when present |
+| `COLORTERM` | `truecolor` or `24bit` enables 24-bit colour in `auto` mode |
+| `TERM` | `dumb` disables automatic colour output |
+| `COLUMNS` | Overrides the detected terminal width |
+| `SHELL` | Shell name and version for the `shell` module |
+| `TERM_PROGRAM`, `TERMINAL`, `VTE_VERSION` | Terminal emulator detection |
+| `XDG_CURRENT_DESKTOP`, `DESKTOP_SESSION`, `KDE_FULL_SESSION` | Desktop and window manager detection |
 
 ---
 
@@ -330,6 +408,10 @@ averon-fetch --format json
 ```
 
 JSON output contains no ANSI sequences and never includes logo artwork.
+`header` is `null` when neither header module is selected or available, and
+`label` reflects any custom labels from `[labels]`. Rows with an empty value
+are omitted, matching text output. Module order follows the same ordering
+rules as the terminal output.
 
 ---
 
@@ -347,18 +429,18 @@ JSON output contains no ANSI sequences and never includes logo artwork.
 
 ## Building from Source
 
-**Requirements:** Rust 1.74 or later, Cargo
+**Requirements:** Rust 1.85 or later, Cargo
 
 Builds run natively on x86_64 and ARM64 (aarch64) Linux. Release binaries are
 produced for both architectures on matching runners, so no cross-compilation
 toolchain is required.
 
 ```sh
-cargo build              # debug build
-cargo build --release    # optimised release build
-cargo test               # run tests
-cargo fmt --check        # check formatting
-cargo clippy -- -D warnings
+cargo build --locked              # debug build
+cargo build --locked --release    # optimised release build
+cargo test --locked --all-targets # run tests
+cargo fmt --all --check           # check formatting
+cargo clippy --locked --all-targets -- -D warnings
 ```
 
 ---

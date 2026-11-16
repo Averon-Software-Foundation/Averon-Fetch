@@ -384,6 +384,8 @@ pub fn render_json(doc: &Document, config: &Config) -> Result<String, serde_json
         modules: doc
             .lines
             .iter()
+            // Match text output: rows without a value are not rendered.
+            .filter(|line| !line.value.is_empty())
             .map(|line: &Line| JsonModule {
                 module: line.module,
                 label: config.resolve_label(line.module, &line.label, line.label_suffix.as_deref()),
@@ -596,6 +598,23 @@ mod tests {
         assert!(!json.contains('\x1b'));
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
         assert_eq!(value["modules"].as_array().unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_json_skips_empty_values_like_text_output() {
+        let config = Config::default();
+        let doc = Document {
+            header: None,
+            lines: vec![
+                Line::new("os", "OS", "Averon Linux"),
+                Line::new("bios", "BIOS", ""),
+            ],
+        };
+        let json = render_json(&doc, &config).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let modules = value["modules"].as_array().unwrap();
+        assert_eq!(modules.len(), 1);
+        assert_eq!(modules[0]["module"], "os");
     }
 
     #[test]
