@@ -1,0 +1,36 @@
+[package]
+name = "averon-fetch"
+version = "0.1.0"
+edition = "2021"
+default-run = "averon-fetch"
+authors = ["Averon Software Foundation"]
+description = "A modern, lightweight system information utility"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/AveronSoftwareFoundation/Averon-Fetch"
+readme = "README.md"
+
+[lib]
+name = "averon_fetch"
+path = "src/lib.rs"
+
+[[bin]]
+name = "averon-fetch"
+path = "src/main.rs"
+
+[[bin]]
+name = "av-fetch"
+path = "src/bin/av-fetch.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+sysinfo = "0.32"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+libc = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
