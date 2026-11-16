@@ -24,24 +24,38 @@ env:
 
 jobs:
   test:
-    name: Test (${{ matrix.name }})
-    runs-on: ubuntu-latest
+    name: Test (${{ matrix.name }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
     strategy:
-      # Report Arch and Debian results independently instead of stopping early.
+      # Report every combination independently instead of stopping early.
       fail-fast: false
       matrix:
         include:
+          # The official Arch Linux image is amd64-only, so Arch is covered
+          # there and arm64 is covered by Debian on a native arm64 runner.
           - name: Arch Linux
             slug: arch
+            distro: arch
+            arch: x86_64
+            runner: ubuntu-latest
             image: archlinux:latest
           - name: Debian
             slug: debian
+            distro: debian
+            arch: x86_64
+            runner: ubuntu-latest
+            image: debian:stable-slim
+          - name: Debian
+            slug: debian-arm64
+            distro: debian
+            arch: aarch64
+            runner: ubuntu-24.04-arm
             image: debian:stable-slim
 
     steps:
       - name: Install dependencies (Arch Linux)
-        if: matrix.slug == 'arch'
+        if: matrix.distro == 'arch'
         run: |
           pacman -Sy --noconfirm --needed archlinux-keyring
           pacman -Su --noconfirm --needed git base-devel rust
@@ -50,14 +64,14 @@ jobs:
           cargo clippy --version
 
       - name: Install dependencies (Debian)
-        if: matrix.slug == 'debian'
+        if: matrix.distro == 'debian'
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
             git curl ca-certificates build-essential
 
       - name: Install Rust toolchain (Debian)
-        if: matrix.slug == 'debian'
+        if: matrix.distro == 'debian'
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --profile minimal --default-toolchain stable \
@@ -112,12 +126,20 @@ jobs:
           ./target/debug/averon-fetch --no-logo --no-color > /dev/null
 
   release:
-    name: Release build (Debian)
-    # Build releases on Debian so the shipped binary links against an older
-    # glibc and runs on Arch and other distributions as well.
+    name: Release build (${{ matrix.arch }})
+    # Build releases on Debian so the shipped binaries link against an older
+    # glibc and run on Arch and other distributions too.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     container: debian:stable-slim
 
     steps:
@@ -152,13 +174,12 @@ jobs:
           cp README.md LICENSE "dist/${name}/"
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
           rm -rf "dist/${name}"
-          ( cd dist && sha256sum ./*.tar.gz > SHA256SUMS )
-          cat dist/SHA256SUMS
+          ls -l dist
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
         with:
-          name: release-linux-x86_64
+          name: release-linux-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
 
@@ -171,11 +192,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Download release artifact
+      - name: Download release artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-linux-x86_64
+          pattern: release-linux-*
           path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd dist
+          sha256sum ./*.tar.gz > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Publish assets
         env:
