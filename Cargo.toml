@@ -7,7 +7,7 @@ default-run = "averon-fetch"
 authors = ["Averon Software Foundation"]
 description = "A modern, lightweight system information utility"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/AveronSoftwareFoundation/Averon-Fetch"
+repository = "https://github.com/Averon-Software-Foundation/Averon-Fetch"
 readme = "README.md"
 
 [lib]

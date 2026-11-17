@@ -446,11 +446,16 @@ toolchain is required. Published release binaries are built for the
 `*-unknown-linux-musl` targets and then verified to be statically linked:
 
 ```sh
-rustup target add "$(uname -m)-unknown-linux-musl"
-cargo build --locked --release --target "$(uname -m)-unknown-linux-musl"
+case "$(uname -m)" in
+  x86_64)  target=x86_64-unknown-linux-musl ;;
+  aarch64) target=aarch64-unknown-linux-musl ;;
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+rustup target add "$target"
+cargo build --locked --release --target "$target"
 ```
 
-The resulting binary lives under `target/<target>/release/`.
+The resulting binaries live under `target/<target>/release/`.
 
 ```sh
 cargo build --locked              # debug build
