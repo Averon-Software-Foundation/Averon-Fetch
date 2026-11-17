@@ -416,22 +416,14 @@ rules as the terminal output.
 ---
 
 ## Package Manager Support
+None yet.
 
-| Manager | Detection Method |
-|---------|-----------------|
-| pacman | `/var/lib/pacman/local/` |
-| apt/dpkg | `/var/lib/dpkg/status` |
-| rpm | `rpm -qa` |
-| flatpak | `flatpak list` |
-| snap | `/snap/` directory |
-
----
 
 ## Building from Source
 
-**Requirements:** Rust 1.85 or later, Cargo
+**Requirements:** Rust 1.85 or later, Cargo However we recommend using the latest one in arch
 
-Builds run natively on x86_64 and ARM64 (aarch64) Linux. Release binaries are
+Builds run natively on x86_64 and ARM64 (aarch64) Linux which we test for remotely via our CI and locally on Reubens Pis. (soon) Release binaries are
 produced for both architectures on matching runners, so no cross-compilation
 toolchain is required.
 
@@ -456,3 +448,4 @@ Contributions are welcome. Please follow the Averon Software Foundation project 
 Averon Fetch is licensed under the **GNU General Public License v3.0**.
 
 See the [LICENSE](LICENSE) file for full terms.
+tldr : You may copy, distribute and modify the software as long as you track changes/dates in source files. Any modifications to or software including (via compiler) GPL-licensed code must also be made available under the GPL along with build & install instruction ( None of that is legal advice and is extremely shortened) 
