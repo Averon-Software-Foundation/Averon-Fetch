@@ -127,6 +127,7 @@ averon-fetch --no-logo                           Display information without the
 averon-fetch --list-modules                      List modules and enabled state
 averon-fetch --module cpu                        Show only CPU information
 averon-fetch -m cpu -m memory                    Show CPU and memory in that order
+averon-fetch -m cpu,memory                       Same, comma-separated
 averon-fetch --all                               Show all modules, ignoring config visibility
 averon-fetch --format json                       Structured JSON output
 averon-fetch --format text                       Terminal text output (default)
@@ -259,8 +260,9 @@ Icons = "Icon Theme"
 ```
 
 Logo width and scale are both supported. `scale = 2.0` doubles the built-in
-logo, while `width = 40` sets a target width directly. If both are set,
-`scale` wins. A custom `custom_ascii` block replaces the built-in mark; its
+logo, while `width = 40` sets a target width directly. When `scale` is set to
+anything other than its default of `1.0`, it takes precedence over `width`.
+A custom `custom_ascii` block replaces the built-in mark; its
 width is measured from the longest line, and it is coloured with
 `logo_primary` before any padding or truncation needed to fit the terminal.
 
@@ -279,10 +281,13 @@ TOML.
 Colour is resolved in this order:
 
 1. `--pipe` and `--no-color` force plain output.
-2. `--color never` and `--color always` override automatic detection.
-3. `auto` checks `NO_COLOR`, `TERM=dumb`, whether stdout is a terminal, and
-   `[general] colour`.
-4. `[terminal] colour` can still force `never` or `always` from the config.
+2. `--color never` forces plain output, and `--color always` forces colour,
+   including when stdout is piped or `NO_COLOR` is set.
+3. Otherwise (`auto`), `NO_COLOR`, `TERM=dumb`, non-TTY stdout, or
+   `[general] colour = false` disable colour.
+4. In `auto` mode, `[terminal] colour = "never"` disables colour and
+   `[terminal] colour = "always"` keeps it enabled after step 3; it cannot
+   override `--pipe`, `--no-color`, or the automatic checks.
 
 Further details:
 
@@ -290,6 +295,9 @@ Further details:
 - `NO_COLOR` disables automatic colour whenever it is present, even if it is
   empty. An explicit `--color always` still overrides it.
 - `--color always` is the explicit opt-in that permits ANSI output when piped.
+- `[terminal] colour` is consulted only in `auto` mode. Unlike `--color
+  always`, it cannot enable colour when stdout is piped, `NO_COLOR` is set,
+  `TERM=dumb`, or `[general] colour = false`.
 - `truecolour = false` uses a 256-colour approximation.
 - If the terminal does not advertise 24-bit support, `auto` uses 256 colours.
   `COLORTERM=truecolor` or `COLORTERM=24bit` enables true colour.
