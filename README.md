@@ -407,7 +407,7 @@ averon-fetch --format json
 ```json
 {
   "header": {
-    "username": "josh",
+    "username": "username",
     "hostname": "hostname"
   },
   "modules": [
