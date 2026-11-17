@@ -403,8 +403,11 @@ jobs:
       - name: Publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          # This job does not check out the repository, so GH_REPO above tells
+          # gh which repository the release belongs to.
           gh release view "$TAG" > /dev/null 2>&1 \
             || gh release create "$TAG" --title "$TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
