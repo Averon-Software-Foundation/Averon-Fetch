@@ -482,7 +482,7 @@ cargo clippy --locked --all-targets -- -D warnings
 
 ## Contributing
 
-Contributions are welcome. Please follow general etiquette of contribution. Any contributions you wish to make, please do so through Pull Requests (PR's) with a rough description of what your change is and we'll check it. We appreciate all contributions.
+Contributions are welcome. Please follow general etiquette of contribution. Any contributions you wish to make, please do so through Pull Requests (PR's) with a rough description of what your change is and we'll check it. Furthermore, any contributions must follow our [AI-Policy](https://github.com/Averon-Software-Foundation/AI-Policy). We appreciate all contributions.
 
 ---
 
