@@ -278,10 +278,16 @@ jobs:
           name: musl-${{ matrix.arch }}
           path: build
 
+      # Artifact uploads do not preserve the executable bit, so restore it
+      # before packaging and running the binaries.
+      - name: Restore executable permissions
+        run: chmod +x build/averon-fetch build/av-fetch
+
       - name: Verify static linking and architecture
         run: |
           for bin in averon-fetch av-fetch; do
             binary="build/$bin"
+            test -x "$binary" || { echo "not executable: $binary" >&2; exit 1; }
             info="$(file "$binary")"
             case "$info" in
               *"statically linked"*|*"static-pie linked"*) ;;
@@ -302,7 +308,7 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           name="averon-fetch-${version}-linux-${{ matrix.arch }}"
           mkdir -p "dist/${name}"
-          cp build/averon-fetch build/av-fetch "dist/${name}/"
+          install -m755 build/averon-fetch build/av-fetch "dist/${name}/"
           cp README.md LICENSE "dist/${name}/"
           tar --sort=name --mtime='@0' \
               --owner=0 --group=0 --numeric-owner \
