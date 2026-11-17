@@ -114,14 +114,20 @@ impl Module for GpuModule {
     }
 
     fn render(&self, info: &SystemInfo, _config: &Config) -> Vec<Line> {
+        let total = info.gpu.len();
         info.gpu
             .iter()
-            .map(|gpu| {
+            .enumerate()
+            .map(|(index, gpu)| {
                 let value = match &gpu.driver {
                     Some(driver) => format!("{} [{driver}]", gpu.name),
                     None => gpu.name.clone(),
                 };
-                Line::new(self.id(), self.label(), value)
+                if total > 1 {
+                    Line::with_suffix(self.id(), self.label(), (index + 1).to_string(), value)
+                } else {
+                    Line::new(self.id(), self.label(), value)
+                }
             })
             .collect()
     }
@@ -406,7 +412,17 @@ impl Module for BatteryModule {
                     return None;
                 }
                 let value = parts.join(" ");
-                Some(detail_line(self.id(), self.label(), index, total, value))
+                let line = if total > 1 {
+                    let suffix = if battery.name.is_empty() {
+                        (index + 1).to_string()
+                    } else {
+                        battery.name.clone()
+                    };
+                    Line::with_suffix(self.id(), self.label(), suffix, value)
+                } else {
+                    Line::new(self.id(), self.label(), value)
+                };
+                Some(line)
             })
             .collect()
     }
@@ -512,6 +528,22 @@ mod tests {
     }
 
     #[test]
+    fn test_multiple_gpus_get_matching_suffixes() {
+        let mut info = SystemInfo::default();
+        for name in ["Intel Graphics", "NVIDIA GeForce RTX 4090"] {
+            info.gpu.push(GpuInfo {
+                name: String::from(name),
+                ..GpuInfo::default()
+            });
+        }
+
+        let lines = GpuModule.render(&info, &config());
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].label_suffix.as_deref(), Some("1"));
+        assert_eq!(lines[1].label_suffix.as_deref(), Some("2"));
+    }
+
+    #[test]
     fn test_bios_requires_version() {
         let mut info = SystemInfo {
             motherboard: MotherboardInfo {
@@ -537,6 +569,24 @@ mod tests {
         info.battery[0].status = Some(String::from("Discharging"));
         let lines = BatteryModule.render(&info, &config());
         assert_eq!(lines[0].value, "80% (Discharging)");
+    }
+
+    #[test]
+    fn test_multiple_batteries_use_device_names() {
+        let mut info = SystemInfo::default();
+        for name in ["BAT0", "BAT1"] {
+            info.battery.push(BatteryInfo {
+                name: String::from(name),
+                capacity_percent: Some(80),
+                status: Some(String::from("Discharging")),
+                ..BatteryInfo::default()
+            });
+        }
+
+        let lines = BatteryModule.render(&info, &config());
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].label_suffix.as_deref(), Some("BAT0"));
+        assert_eq!(lines[1].label_suffix.as_deref(), Some("BAT1"));
     }
 
     #[test]
