@@ -49,12 +49,14 @@ jobs:
             arch: x86_64
             runner: ubuntu-latest
             image: debian:stable-slim
+            target: x86_64-unknown-linux-musl
           - name: Debian
             slug: debian-arm64
             distro: debian
             arch: aarch64
             runner: ubuntu-24.04-arm
             image: debian:stable-slim
+            target: aarch64-unknown-linux-musl
 
     steps:
       - name: Install dependencies (Arch Linux)
@@ -71,7 +73,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git curl ca-certificates build-essential
+            git curl ca-certificates build-essential musl-tools
 
       - name: Install Rust toolchain (Debian)
         if: matrix.distro == 'debian'
@@ -118,6 +120,22 @@ jobs:
       - name: Build (release)
         run: cargo build --locked --release
 
+      # Release artifacts are statically linked against musl so they run on
+      # glibc and musl distributions alike, including older ARM boards.
+      - name: Build (musl static)
+        if: matrix.distro == 'debian'
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: |
+          rustup target add "${{ matrix.target }}"
+          cargo build --locked --release --target "${{ matrix.target }}"
+          binary="target/${{ matrix.target }}/release/averon-fetch"
+          if readelf -d "$binary" | grep -q NEEDED; then
+            echo "expected a statically linked binary: $binary" >&2
+            exit 1
+          fi
+
       - name: Run tests
         run: cargo test --locked --all-targets
 
@@ -127,11 +145,26 @@ jobs:
           ./target/debug/av-fetch --version
           ./target/debug/averon-fetch --format json > /dev/null
           ./target/debug/averon-fetch --no-logo --no-color > /dev/null
+          ./target/debug/averon-fetch --list-modules > /dev/null
+          ./target/debug/averon-fetch --all --format json > /dev/null
+
+      # Exercise the shipped static binary on both architectures. This runs the
+      # full collector set against minimal images, which is where missing
+      # tools (iproute2, coreutils, pciutils) would otherwise go unnoticed.
+      - name: Smoke test musl binary
+        if: matrix.distro == 'debian'
+        run: |
+          binary="target/${{ matrix.target }}/release/averon-fetch"
+          "$binary" --version
+          "$binary" --list-modules > /dev/null
+          "$binary" --all --format json > /dev/null
 
   release:
     name: Release build (${{ matrix.arch }})
-    # Build releases on Debian so the shipped binaries link against an older
-    # glibc and run on Arch and other distributions too.
+    # Build releases on Debian so the shipped binaries are reproducible and
+    # architecture-native. The musl target keeps them statically linked, which
+    # lets the same archive run on glibc and musl distributions (Alpine, older
+    # ARM boards) without matching the host C library.
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     strategy:
@@ -140,8 +173,10 @@ jobs:
         include:
           - arch: x86_64
             runner: ubuntu-latest
+            target: x86_64-unknown-linux-musl
           - arch: aarch64
             runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
     runs-on: ${{ matrix.runner }}
     container: debian:stable-slim
 
@@ -150,7 +185,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git curl ca-certificates build-essential
+            git curl ca-certificates build-essential musl-tools file
 
       - name: Install Rust toolchain
         run: |
@@ -165,7 +200,21 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Build release binary
-        run: cargo build --locked --release
+        env:
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
+        run: |
+          rustup target add "${{ matrix.target }}"
+          cargo build --locked --release --target "${{ matrix.target }}"
+
+      - name: Verify static linking
+        run: |
+          binary="target/${{ matrix.target }}/release/averon-fetch"
+          if readelf -d "$binary" | grep -q NEEDED; then
+            echo "release binary is dynamically linked: $binary" >&2
+            exit 1
+          fi
+          file "$binary"
 
       - name: Package release
         run: |
@@ -173,7 +222,9 @@ jobs:
           arch="$(uname -m)"
           name="averon-fetch-${version}-linux-${arch}"
           mkdir -p "dist/${name}"
-          cp target/release/averon-fetch target/release/av-fetch "dist/${name}/"
+          cp "target/${{ matrix.target }}/release/averon-fetch" \
+             "target/${{ matrix.target }}/release/av-fetch" \
+             "dist/${name}/"
           cp README.md LICENSE "dist/${name}/"
           tar -czf "dist/${name}.tar.gz" -C dist "${name}"
           rm -rf "dist/${name}"
