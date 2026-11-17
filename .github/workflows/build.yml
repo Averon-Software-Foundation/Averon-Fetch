@@ -97,10 +97,10 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -183,7 +183,7 @@ jobs:
 
       - name: Upload musl binaries
         if: matrix.distro == 'debian' && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: musl-${{ matrix.arch }}
           path: build/*
@@ -218,10 +218,10 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Cargo registry
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -270,10 +270,22 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
+
+      # Catch a tag that does not match Cargo.toml before publishing artifacts
+      # under the wrong version.
+      - name: Verify tag matches package version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          package_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -n 1)"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $package_version" >&2
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches Cargo.toml version $package_version"
 
       - name: Download tested musl binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: musl-${{ matrix.arch }}
           path: build
@@ -333,7 +345,7 @@ jobs:
           grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' smoke/all.json
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-linux-${{ matrix.arch }}
           path: dist/*
@@ -358,7 +370,7 @@ jobs:
 
     steps:
       - name: Download release artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: release-linux-${{ matrix.arch }}
           path: dist
@@ -388,7 +400,7 @@ jobs:
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: release-linux-*
           path: dist
