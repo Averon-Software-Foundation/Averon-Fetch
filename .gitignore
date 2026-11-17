@@ -1,10 +1,22 @@
 # Rust build output
-/target
+target/
 **/*.rs.bk
+*.profraw
+*.profdata
+lcov.info
 
 # Release packaging output
-/dist
+/dist/
+/build/
+/smoke/
+/rootfs/
+/alpine-all.json
 
 # Editor and OS noise
 .DS_Store
+._*
 *.swp
+*.swo
+*~
+.vscode/
+.idea/
