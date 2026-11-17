@@ -2,7 +2,9 @@
 
 A modern, lightweight system information utility written in Rust.
 
-Developed by the [Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+Developed by the:
+[Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+[Averon Software Foundation Website](https://averon-software-foundation.github.io/averon-site/).
 
 Averon Fetch displays detailed system information in the terminal with a clean, structured layout. It is designed as an independent alternative to tools such as Fastfetch, with its own aesthetic and configuration system built from the ground up using Rust.
 
@@ -480,7 +482,7 @@ cargo clippy --locked --all-targets -- -D warnings
 
 ## Contributing
 
-Contributions are welcome. Please follow the Averon Software Foundation project conventions when submitting patches or pull requests. Ensure all code is formatted with `cargo fmt` and passes `cargo clippy` before submission. Open an issue to discuss significant changes before beginning work.
+Contributions are welcome. Please follow general etiquette of contribution. Any contributions you wish to make, please do so through Pull Requests (PR's) with a rough description of what your change is and we'll check it. We appreciate all contributions.
 
 ---
 
