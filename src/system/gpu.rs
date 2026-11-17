@@ -448,13 +448,28 @@ fn nvidia_smi_details() -> Vec<(String, f32, f32, u64, u64)> {
         .collect()
 }
 
+fn gpu_is_nvidia(gpu: &GpuInfo) -> bool {
+    gpu.name.to_lowercase().contains("nvidia")
+        || gpu
+            .driver
+            .as_deref()
+            .is_some_and(|driver| driver.to_lowercase().starts_with("nvidia"))
+}
+
 fn enrich_nvidia(gpus: &mut [GpuInfo]) {
-    let needs_details = gpus.iter().any(|gpu| {
-        gpu.name.to_lowercase().contains("nvidia")
-            && (gpu.utilization_percent.is_none()
-                || gpu.temperature_c.is_none()
-                || gpu.vram_total_bytes.is_none()
-                || gpu.vram_used_bytes.is_none())
+    let nvidia_indices: Vec<usize> = gpus
+        .iter()
+        .enumerate()
+        .filter(|(_, gpu)| gpu_is_nvidia(gpu))
+        .map(|(index, _)| index)
+        .collect();
+
+    let needs_details = nvidia_indices.iter().any(|&index| {
+        let gpu = &gpus[index];
+        gpu.utilization_percent.is_none()
+            || gpu.temperature_c.is_none()
+            || gpu.vram_total_bytes.is_none()
+            || gpu.vram_used_bytes.is_none()
     });
     if !needs_details {
         return;
@@ -465,11 +480,15 @@ fn enrich_nvidia(gpus: &mut [GpuInfo]) {
         return;
     }
 
-    for (index, gpu) in gpus.iter_mut().enumerate() {
+    // Match by name where possible. The positional fallback only indexes the
+    // NVIDIA GPUs, so a single NVIDIA entry can never be applied to an
+    // integrated GPU that happens to appear earlier in the list.
+    for (nvidia_index, index) in nvidia_indices.into_iter().enumerate() {
+        let gpu = &mut gpus[index];
         let matching = details
             .iter()
             .find(|(name, ..)| name.eq_ignore_ascii_case(&gpu.name))
-            .or_else(|| details.get(index));
+            .or_else(|| details.get(nvidia_index));
 
         let Some((_, utilization, temperature, total, used)) = matching else {
             continue;
@@ -538,5 +557,27 @@ mod tests {
         assert!(gpu.temperature_c.is_none());
         assert!(gpu.vram_total_bytes.is_none());
         assert!(gpu.vram_used_bytes.is_none());
+    }
+
+    #[test]
+    fn test_nvidia_detection_uses_name_or_driver() {
+        let by_name = GpuInfo {
+            name: String::from("NVIDIA GeForce RTX 4090"),
+            ..GpuInfo::default()
+        };
+        let by_driver = GpuInfo {
+            name: String::from("Discrete GPU"),
+            driver: Some(String::from("nvidia 550.54.14")),
+            ..GpuInfo::default()
+        };
+        let intel = GpuInfo {
+            name: String::from("Intel Graphics"),
+            driver: Some(String::from("i915")),
+            ..GpuInfo::default()
+        };
+
+        assert!(gpu_is_nvidia(&by_name));
+        assert!(gpu_is_nvidia(&by_driver));
+        assert!(!gpu_is_nvidia(&intel));
     }
 }
