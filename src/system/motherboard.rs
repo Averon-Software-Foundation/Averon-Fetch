@@ -1,4 +1,4 @@
-use std::fs;
+use super::dmi;
 
 #[derive(Debug, Clone, Default)]
 pub struct MotherboardInfo {
@@ -8,20 +8,12 @@ pub struct MotherboardInfo {
     pub bios_version: Option<String>,
 }
 
-fn read_dmi(name: &str) -> Option<String> {
-    fs::read_to_string(format!("/sys/devices/virtual/dmi/id/{name}"))
-        .or_else(|_| fs::read_to_string(format!("/sys/class/dmi/id/{name}")))
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty() && value != "None")
-}
-
 pub fn collect() -> MotherboardInfo {
     MotherboardInfo {
-        board_vendor: read_dmi("board_vendor"),
-        board_name: read_dmi("board_name"),
-        bios_vendor: read_dmi("bios_vendor"),
-        bios_version: read_dmi("bios_version"),
+        board_vendor: dmi::read("board_vendor"),
+        board_name: dmi::read("board_name"),
+        bios_vendor: dmi::read("bios_vendor"),
+        bios_version: dmi::read("bios_version"),
     }
 }
 

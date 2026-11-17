@@ -1,3 +1,4 @@
+use super::dmi;
 use std::fs;
 use sysinfo::System;
 
@@ -8,30 +9,9 @@ pub struct GeneralInfo {
     pub host: Option<String>,
 }
 
-fn is_generic_dmi(s: &str) -> bool {
-    let lower = s.to_lowercase();
-    lower.is_empty()
-        || lower.contains("to be filled")
-        || lower.contains("system product name")
-        || lower.contains("default string")
-        || lower.contains("undefined")
-        || lower == "none"
-        || lower == "system manufacturer"
-        || lower == "o.e.m."
-}
-
 fn detect_host() -> Option<String> {
-    let product_name = fs::read_to_string("/sys/devices/virtual/dmi/id/product_name")
-        .or_else(|_| fs::read_to_string("/sys/class/dmi/id/product_name"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !is_generic_dmi(s));
-
-    let product_version = fs::read_to_string("/sys/devices/virtual/dmi/id/product_version")
-        .or_else(|_| fs::read_to_string("/sys/class/dmi/id/product_version"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !is_generic_dmi(s));
+    let product_name = dmi::read("product_name");
+    let product_version = dmi::read("product_version");
 
     if let Some(name) = product_name {
         if let Some(ver) = product_version {
@@ -42,11 +22,7 @@ fn detect_host() -> Option<String> {
         return Some(name);
     }
 
-    let board_name = fs::read_to_string("/sys/devices/virtual/dmi/id/board_name")
-        .or_else(|_| fs::read_to_string("/sys/class/dmi/id/board_name"))
-        .ok()
-        .map(|s| s.trim().to_string())
-        .filter(|s| !is_generic_dmi(s));
+    let board_name = dmi::read("board_name");
 
     if let Some(board) = board_name {
         return Some(board);

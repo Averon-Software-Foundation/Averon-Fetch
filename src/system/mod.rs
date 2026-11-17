@@ -3,6 +3,7 @@ pub mod battery;
 pub mod cpu;
 pub mod desktop;
 pub mod display;
+mod dmi;
 pub mod general;
 pub mod gpu;
 pub mod locale;

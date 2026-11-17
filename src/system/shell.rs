@@ -13,29 +13,55 @@ pub struct ShellInfo {
 
 const KNOWN_TERMINALS: &[&str] = &[
     "alacritty",
-    "kitty",
-    "wezterm",
-    "wezterm-gui",
-    "gnome-terminal",
-    "gnome-terminal-",
-    "konsole",
-    "xfce4-terminal",
-    "xterm",
-    "urxvt",
-    "rxvt",
+    "blackbox",
+    "cool-retro-term",
+    "contour",
+    "cosmic-term",
     "foot",
     "footclient",
+    "ghostty",
+    "gnome-console",
+    "gnome-terminal",
+    "gnome-terminal-",
+    "guake",
+    "hyper",
     "hyprterm",
-    "tilix",
-    "terminator",
-    "mate-terminal",
+    "kgx",
+    "kitty",
+    "konsole",
     "lxterminal",
-    "st",
-    "cool-retro-term",
-    "terminology",
-    "contour",
+    "mate-terminal",
+    "ptyxis",
+    "qterminal",
     "rio",
+    "rxvt",
+    "sakura",
+    "st",
+    "tabby",
+    "terminator",
+    "terminology",
+    "tilda",
+    "tilix",
+    "urxvt",
+    "warp",
+    "warp-terminal",
+    "waveterm",
+    "wezterm",
+    "wezterm-gui",
+    "xfce4-terminal",
+    "xterm",
+    "yakuake",
 ];
+
+/// Match the process name against the terminal list. Very short names like
+/// `st` and `rio` only match exactly so unrelated ancestors such as `steam`
+/// are not mistaken for a terminal.
+fn is_known_terminal(comm: &str) -> bool {
+    let comm = comm.to_lowercase();
+    KNOWN_TERMINALS
+        .iter()
+        .any(|&terminal| comm == terminal || (terminal.len() >= 4 && comm.starts_with(terminal)))
+}
 
 fn detect_shell() -> (Option<String>, Option<String>) {
     let shell_path = match env::var("SHELL") {
@@ -173,9 +199,8 @@ fn walk_proc_for_terminal() -> Option<String> {
         }
 
         let comm = read_proc_comm(ppid)?;
-        let comm_lower = comm.to_lowercase();
 
-        if KNOWN_TERMINALS.iter().any(|&t| comm_lower.starts_with(t)) {
+        if is_known_terminal(&comm) {
             return Some(comm);
         }
 
@@ -194,5 +219,30 @@ pub fn collect() -> ShellInfo {
         version,
         terminal,
         terminal_version,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_known_terminal_matching() {
+        for comm in [
+            "alacritty",
+            "ghostty",
+            "ptyxis",
+            "kgx",
+            "blackbox",
+            "gnome-terminal-server",
+            "wezterm-gui",
+            "st",
+        ] {
+            assert!(is_known_terminal(comm), "expected terminal: {comm}");
+        }
+
+        for comm in ["steam", "systemd", "bash", "wayland"] {
+            assert!(!is_known_terminal(comm), "unexpected terminal: {comm}");
+        }
     }
 }
