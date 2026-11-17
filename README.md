@@ -337,10 +337,8 @@ shown with placeholder values.
 
 Some values depend on the session and the available helpers:
 
-- `Display` reads connector state from sysfs. Refresh rate and the primary
-  marker come from `xrandr`, so they are not reported under a pure Wayland
-  session. If no primary display is reported, the first one is treated as
-  primary.
+- `Display` reads connector state from sysfs. Refresh rate comes from
+  `xrandr`, so it is not reported under a pure Wayland session.
 - `Disk` reads mount points from `/proc/self/mounts` and sizes through
   `statvfs`, so it does not need GNU `df` (which BusyBox lacks) and handles
   mount points containing spaces.
@@ -383,7 +381,8 @@ Averon Fetch keeps work proportional to what is displayed:
   queried when their modules are disabled.
 - `nvidia-smi` is called at most once, and only when a selected GPU detail
   module needs data that sysfs could not provide.
-- Network addresses are collected with one `ip` invocation.
+- Network addresses are collected with `getifaddrs`; the `ip` command is only
+  used as a fallback when that call fails.
 - Terminal width is read with an ioctl instead of a `stty` subprocess.
 - CPU usage uses a short `/proc/stat` sample and is disabled by default.
 
@@ -425,17 +424,29 @@ rules as the terminal output.
 ---
 
 ## Package Manager Support
-None yet.
 
+Package counts are read from the local package databases and tools listed
+below. No package manager is required for Averon Fetch itself to run.
+
+| Manager | Detection Method |
+|---------|-----------------|
+| pacman | `/var/lib/pacman/local/` |
+| apt/dpkg | `/var/lib/dpkg/status` |
+| rpm | `rpm -qa` |
+| flatpak | `flatpak list` |
+| snap | `/snap/` directory |
+
+---
 
 ## Building from Source
 
-**Requirements:** Rust 1.85 or later, Cargo However we recommend using the latest one in arch
+**Requirements:** Rust 1.85 or later and Cargo. Using the latest stable
+toolchain is recommended.
 
-Builds run natively on x86_64 and ARM64 (aarch64) Linux which we test for remotely via our CI and locally on Reubens Pis. (soon) Release binaries are
-produced for both architectures on matching runners, so no cross-compilation
-toolchain is required. Published release binaries are built for the
-`*-unknown-linux-musl` targets and then verified to be statically linked:
+Builds run natively on x86_64 and ARM64 (aarch64) Linux. CI builds and tests
+both architectures on matching runners, so no cross-compilation toolchain is
+required. Published release binaries are built for the `*-unknown-linux-musl`
+targets and then verified to be statically linked:
 
 ```sh
 case "$(uname -m)" in
@@ -470,4 +481,9 @@ Contributions are welcome. Please follow the Averon Software Foundation project 
 Averon Fetch is licensed under the **GNU General Public License v3.0**.
 
 See the [LICENSE](LICENSE) file for full terms.
-tldr : You may copy, distribute and modify the software as long as you track changes/dates in source files. Any modifications to or software including (via compiler) GPL-licensed code must also be made available under the GPL along with build & install instruction ( None of that is legal advice and is extremely shortened) 
+This is a short, non-authoritative summary: you may copy, distribute, and
+modify the software as long as changes are tracked in the source files, and
+any modified version distributed, including GPL-licensed code compiled into
+it, is made available under the GPL together with build and install
+instructions. This is not legal advice; see the LICENSE file for the full
+terms.
