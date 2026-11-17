@@ -30,6 +30,7 @@ jobs:
     name: Test (${{ matrix.name }}, ${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     container: ${{ matrix.image }}
+    timeout-minutes: 30
     strategy:
       # Report every combination independently instead of stopping early.
       fail-fast: false
@@ -49,12 +50,14 @@ jobs:
             arch: x86_64
             runner: ubuntu-latest
             image: debian:stable-slim
+            target: x86_64-unknown-linux-musl
           - name: Debian
             slug: debian-arm64
             distro: debian
             arch: aarch64
             runner: ubuntu-24.04-arm
             image: debian:stable-slim
+            target: aarch64-unknown-linux-musl
 
     steps:
       - name: Install dependencies (Arch Linux)
@@ -71,7 +74,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git curl ca-certificates build-essential
+            git curl ca-certificates build-essential binutils file
 
       - name: Install Rust toolchain (Debian)
         if: matrix.distro == 'debian'
@@ -112,38 +115,89 @@ jobs:
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
 
-      - name: Build (debug)
-        run: cargo build --locked
-
-      - name: Build (release)
-        run: cargo build --locked --release
-
+      # Run the test suite before the expensive release-profile build so a
+      # logic failure fails fast.
       - name: Run tests
         run: cargo test --locked --all-targets
 
+      - name: Build (debug)
+        run: cargo build --locked
+
+      # Run every module and assert that the collectors which must work
+      # everywhere produced output, not just that the process exited zero.
       - name: Smoke test binaries
         run: |
           ./target/debug/averon-fetch --version
           ./target/debug/av-fetch --version
-          ./target/debug/averon-fetch --format json > /dev/null
           ./target/debug/averon-fetch --no-logo --no-color > /dev/null
+          ./target/debug/averon-fetch --list-modules > /dev/null
+          ./target/debug/averon-fetch --all --format json > /tmp/averon-fetch-all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"os"' /tmp/averon-fetch-all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' /tmp/averon-fetch-all.json
 
-  release:
-    name: Release build (${{ matrix.arch }})
-    # Build releases on Debian so the shipped binaries link against an older
-    # glibc and run on Arch and other distributions too.
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: test
+      # Release artifacts are statically linked against musl so they run on
+      # glibc and musl distributions alike, including older ARM boards.
+      - name: Build (musl static)
+        if: matrix.distro == 'debian'
+        run: |
+          # Rust's self-contained musl linking ships the target's libc and
+          # startup objects, so no host musl-gcc is required.
+          rustup target add "${{ matrix.target }}"
+          cargo build --locked --release --target "${{ matrix.target }}"
+          for bin in averon-fetch av-fetch; do
+            binary="target/${{ matrix.target }}/release/$bin"
+            info="$(file "$binary")"
+            case "$info" in
+              *"statically linked"*|*"static-pie linked"*) ;;
+              *) echo "expected a statically linked binary: $binary ($info)" >&2; exit 1 ;;
+            esac
+            dynamic="$(readelf -d "$binary" 2>/dev/null || true)"
+            case "$dynamic" in
+              *NEEDED*) echo "expected a statically linked binary: $binary" >&2; exit 1 ;;
+            esac
+          done
+
+      # Exercise the static binary on both architectures against a minimal
+      # image, where missing tools (iproute2, coreutils, pciutils) would
+      # otherwise go unnoticed.
+      - name: Smoke test musl binary
+        if: matrix.distro == 'debian'
+        run: |
+          binary="target/${{ matrix.target }}/release/averon-fetch"
+          "$binary" --version
+          "target/${{ matrix.target }}/release/av-fetch" --version
+          "$binary" --list-modules > /dev/null
+          "$binary" --all --format json > /tmp/averon-fetch-musl.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"os"' /tmp/averon-fetch-musl.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' /tmp/averon-fetch-musl.json
+
+      # Hand the exact binaries built and tested here to the release job so it
+      # packages the validated artifact instead of rebuilding a new one.
+      - name: Stage musl binaries
+        if: matrix.distro == 'debian' && startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p build
+          cp "target/${{ matrix.target }}/release/averon-fetch" \
+             "target/${{ matrix.target }}/release/av-fetch" \
+             build/
+
+      - name: Upload musl binaries
+        if: matrix.distro == 'debian' && startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: musl-${{ matrix.arch }}
+          path: build/*
+          if-no-files-found: error
+
+  msrv:
+    name: MSRV (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    container: debian:stable-slim
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - arch: x86_64
-            runner: ubuntu-latest
-          - arch: aarch64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    container: debian:stable-slim
+        rust: ['1.85.0']
 
     steps:
       - name: Install dependencies
@@ -155,8 +209,62 @@ jobs:
       - name: Install Rust toolchain
         run: |
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-            | sh -s -- -y --profile minimal --default-toolchain stable
+            | sh -s -- -y --profile minimal --default-toolchain "${{ matrix.rust }}"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      # The workspace is mounted from the host, so git needs it trusted
+      # before checkout can operate on it.
+      - name: Trust workspace directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: msrv-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            msrv-cargo-
+
+      # Fail if the declared minimum is not the toolchain in use, then prove
+      # the locked dependency set still builds and passes tests on it.
+      - name: Build and test on minimum supported Rust
+        run: |
+          rustc --version | grep -F " ${{ matrix.rust }} "
+          cargo build --locked --all-targets
+          cargo test --locked --all-targets
+
+  release:
+    name: Release build (${{ matrix.arch }})
+    # Package the musl binaries the test job built and smoke-tested, so the
+    # published archives are exactly the artifacts CI validated. The archive
+    # metadata is fixed so repeated packaging of the same binaries is stable.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, msrv]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+            file_arch: x86-64
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+            file_arch: ARM aarch64
+    runs-on: ${{ matrix.runner }}
+    container: debian:stable-slim
+    timeout-minutes: 20
+
+    steps:
+      - name: Install packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates binutils file
 
       - name: Trust workspace directory
         run: git config --global --add safe.directory '*'
@@ -164,20 +272,65 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build release binary
-        run: cargo build --locked --release
+      - name: Download tested musl binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: musl-${{ matrix.arch }}
+          path: build
+
+      # Artifact uploads do not preserve the executable bit, so restore it
+      # before packaging and running the binaries.
+      - name: Restore executable permissions
+        run: chmod +x build/averon-fetch build/av-fetch
+
+      - name: Verify static linking and architecture
+        run: |
+          for bin in averon-fetch av-fetch; do
+            binary="build/$bin"
+            test -x "$binary" || { echo "not executable: $binary" >&2; exit 1; }
+            info="$(file "$binary")"
+            case "$info" in
+              *"statically linked"*|*"static-pie linked"*) ;;
+              *) echo "not statically linked: $binary ($info)" >&2; exit 1 ;;
+            esac
+            case "$info" in
+              *"${{ matrix.file_arch }}"*) ;;
+              *) echo "wrong architecture: $binary ($info)" >&2; exit 1 ;;
+            esac
+            dynamic="$(readelf -d "$binary" 2>/dev/null || true)"
+            case "$dynamic" in
+              *NEEDED*) echo "release binary is dynamically linked: $binary" >&2; exit 1 ;;
+            esac
+          done
 
       - name: Package release
         run: |
           version="${GITHUB_REF_NAME#v}"
-          arch="$(uname -m)"
-          name="averon-fetch-${version}-linux-${arch}"
+          name="averon-fetch-${version}-linux-${{ matrix.arch }}"
           mkdir -p "dist/${name}"
-          cp target/release/averon-fetch target/release/av-fetch "dist/${name}/"
+          install -m755 build/averon-fetch build/av-fetch "dist/${name}/"
           cp README.md LICENSE "dist/${name}/"
-          tar -czf "dist/${name}.tar.gz" -C dist "${name}"
+          tar --sort=name --mtime='@0' \
+              --owner=0 --group=0 --numeric-owner \
+              -czf "dist/${name}.tar.gz" -C dist "${name}"
           rm -rf "dist/${name}"
           ls -l dist
+
+      # Re-extract and run the archive that will be uploaded, so packaging
+      # mistakes cannot silently ship an untested layout.
+      - name: Smoke test packaged archive
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          archive="dist/averon-fetch-${version}-linux-${{ matrix.arch }}.tar.gz"
+          mkdir -p smoke
+          tar -xzf "$archive" -C smoke
+          dir="smoke/averon-fetch-${version}-linux-${{ matrix.arch }}"
+          "$dir/averon-fetch" --version
+          "$dir/av-fetch" --version
+          "$dir/averon-fetch" --list-modules > /dev/null
+          "$dir/averon-fetch" --all --format json > smoke/all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"os"' smoke/all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' smoke/all.json
 
       - name: Upload release artifact
         uses: actions/upload-artifact@v4
@@ -186,11 +339,50 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  verify-musl:
+    name: Verify musl runtime (${{ matrix.arch }})
+    # The static binaries are also run inside Alpine, the musl distribution
+    # the release build is meant to support, not only on the glibc host.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Download release artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: release-linux-${{ matrix.arch }}
+          path: dist
+
+      - name: Run packaged binary on Alpine
+        run: |
+          mkdir -p rootfs
+          tar -xzf dist/*.tar.gz -C rootfs
+          dir="$(find rootfs -maxdepth 1 -type d -name 'averon-fetch-*' -print -quit)"
+          docker run --rm -v "$PWD/${dir}:/app:ro" alpine:latest /app/averon-fetch --version
+          docker run --rm -v "$PWD/${dir}:/app:ro" alpine:latest /app/av-fetch --version
+          docker run --rm -v "$PWD/${dir}:/app:ro" alpine:latest \
+            /app/averon-fetch --list-modules > /dev/null
+          docker run --rm -v "$PWD/${dir}:/app:ro" alpine:latest \
+            /app/averon-fetch --all --format json > alpine-all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"os"' alpine-all.json
+          grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' alpine-all.json
+
   publish:
     name: Publish GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: release
+    needs: [ release, verify-musl ]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     permissions:
       contents: write
 
@@ -211,8 +403,11 @@ jobs:
       - name: Publish assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
         run: |
+          # This job does not check out the repository, so GH_REPO above tells
+          # gh which repository the release belongs to.
           gh release view "$TAG" > /dev/null 2>&1 \
             || gh release create "$TAG" --title "$TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber

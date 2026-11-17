@@ -56,7 +56,10 @@ Averon Fetch displays detailed system information in the terminal with a clean, 
 
 ### Prebuilt Binaries
 
-Release archives are published for Linux on both x86_64 and ARM64:
+Release archives are published for Linux on both x86_64 and ARM64. The
+binaries are statically linked against musl, so they run on glibc and musl
+distributions (including Alpine and older ARM boards) without matching a host
+C library:
 
 ```
 averon-fetch-<version>-linux-x86_64.tar.gz
@@ -338,6 +341,12 @@ Some values depend on the session and the available helpers:
   marker come from `xrandr`, so they are not reported under a pure Wayland
   session. If no primary display is reported, the first one is treated as
   primary.
+- `Disk` reads mount points from `/proc/self/mounts` and sizes through
+  `statvfs`, so it does not need GNU `df` (which BusyBox lacks) and handles
+  mount points containing spaces.
+- `Network` reads addresses through `getifaddrs`, so it works without
+  `iproute2`; the `ip` command is only used as a fallback. IPv6 link-local and
+  loopback addresses are skipped when choosing the reported address.
 - `Network` prefers IPv4 and falls back to the first IPv6 address when an
   interface has no IPv4 address.
 - `CPU Temp`, `GPU Usage`, `GPU Temp`, and `GPU VRAM` require readable sysfs
@@ -416,24 +425,29 @@ rules as the terminal output.
 ---
 
 ## Package Manager Support
+None yet.
 
-| Manager | Detection Method |
-|---------|-----------------|
-| pacman | `/var/lib/pacman/local/` |
-| apt/dpkg | `/var/lib/dpkg/status` |
-| rpm | `rpm -qa` |
-| flatpak | `flatpak list` |
-| snap | `/snap/` directory |
-
----
 
 ## Building from Source
 
-**Requirements:** Rust 1.85 or later, Cargo
+**Requirements:** Rust 1.85 or later, Cargo However we recommend using the latest one in arch
 
-Builds run natively on x86_64 and ARM64 (aarch64) Linux. Release binaries are
+Builds run natively on x86_64 and ARM64 (aarch64) Linux which we test for remotely via our CI and locally on Reubens Pis. (soon) Release binaries are
 produced for both architectures on matching runners, so no cross-compilation
-toolchain is required.
+toolchain is required. Published release binaries are built for the
+`*-unknown-linux-musl` targets and then verified to be statically linked:
+
+```sh
+case "$(uname -m)" in
+  x86_64)  target=x86_64-unknown-linux-musl ;;
+  aarch64) target=aarch64-unknown-linux-musl ;;
+  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+esac
+rustup target add "$target"
+cargo build --locked --release --target "$target"
+```
+
+The resulting binaries live under `target/<target>/release/`.
 
 ```sh
 cargo build --locked              # debug build
@@ -456,3 +470,4 @@ Contributions are welcome. Please follow the Averon Software Foundation project 
 Averon Fetch is licensed under the **GNU General Public License v3.0**.
 
 See the [LICENSE](LICENSE) file for full terms.
+tldr : You may copy, distribute and modify the software as long as you track changes/dates in source files. Any modifications to or software including (via compiler) GPL-licensed code must also be made available under the GPL along with build & install instruction ( None of that is legal advice and is extremely shortened) 
