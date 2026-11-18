@@ -122,12 +122,16 @@ pub fn collect(plan: &CollectPlan) -> SystemInfo {
         None
     };
 
-    let mut sys = sysinfo::System::new();
-    if plan.cpu {
-        sys.refresh_cpu_all();
-    }
-    if plan.memory {
-        sys.refresh_memory();
+    // `System::new` is fallible; if it fails, the collectors that need it fall
+    // back to their defaults instead of aborting the whole run.
+    let mut sys = sysinfo::System::new().ok();
+    if let Some(sys) = sys.as_mut() {
+        if plan.cpu {
+            sys.refresh_cpu_all();
+        }
+        if plan.memory {
+            sys.refresh_memory();
+        }
     }
 
     // Most collectors either spawn a helper process or walk sysfs, so they
@@ -150,12 +154,12 @@ pub fn collect(plan: &CollectPlan) -> SystemInfo {
     // These read from the shared `System` handle and are already cached, so
     // collecting them here is cheaper than moving the handle into a thread.
     let general = if plan.general {
-        general::collect(&sys)
+        general::collect()
     } else {
         general::GeneralInfo::default()
     };
     let memory = if plan.memory {
-        memory::collect(&sys)
+        sys.as_ref().map(memory::collect).unwrap_or_default()
     } else {
         memory::MemoryInfo::default()
     };
@@ -177,7 +181,10 @@ pub fn collect(plan: &CollectPlan) -> SystemInfo {
         audio: join_collector(audio).unwrap_or_default(),
         // Last, so the usage window covers the collectors joined above.
         cpu: if plan.cpu {
-            cpu::collect(&sys, usage, plan.cpu_temperature)
+            match sys.as_ref() {
+                Some(sys) => cpu::collect(sys, usage, plan.cpu_temperature),
+                None => cpu::CpuInfo::default(),
+            }
         } else {
             cpu::CpuInfo::default()
         },

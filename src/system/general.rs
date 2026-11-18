@@ -42,12 +42,12 @@ fn detect_host() -> Option<String> {
     None
 }
 
-pub fn collect(_sys: &System) -> GeneralInfo {
+pub fn collect() -> GeneralInfo {
     GeneralInfo {
         username: std::env::var("USER")
             .ok()
             .or_else(|| std::env::var("LOGNAME").ok()),
-        hostname: System::host_name(),
+        hostname: System::host_name().ok(),
         host: detect_host(),
     }
 }

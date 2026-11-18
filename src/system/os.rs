@@ -47,9 +47,9 @@ pub fn collect() -> OsInfo {
 
     let arch = Some(std::env::consts::ARCH.to_string());
 
-    let kernel = System::kernel_version();
+    let kernel = System::kernel_version().ok();
 
-    let uptime_secs = System::uptime();
+    let uptime_secs = System::uptime().unwrap_or(0);
 
     OsInfo {
         name,

@@ -104,10 +104,6 @@ jobs:
 
       - name: Cache Cargo registry
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
-        uses: actions/checkout@v7
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v6
         with:
           path: |
             ~/.cargo/registry
@@ -220,7 +216,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: ['1.85.0']
+        rust: ['1.95.0']
 
     steps:
       - name: Install dependencies
