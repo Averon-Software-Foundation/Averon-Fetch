@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::BufRead;
 use std::path::Path;
 use std::process::Command;
 
@@ -35,11 +36,20 @@ fn count_dpkg() -> Option<PackageCount> {
     if !path.exists() {
         return None;
     }
-    let content = fs::read_to_string(path).ok()?;
-    let count = content
-        .lines()
-        .filter(|l| *l == "Status: install ok installed")
-        .count();
+    // The status database is tens of megabytes on a typical Debian install, so
+    // count matching lines as they stream in rather than loading it all. The
+    // bytes are compared directly: package descriptions are not always valid
+    // UTF-8 and a decoding error must not stop the count.
+    let file = fs::File::open(path).ok()?;
+    let mut reader = std::io::BufReader::new(file);
+    let mut line = Vec::new();
+    let mut count = 0;
+    while reader.read_until(b'\n', &mut line).unwrap_or(0) > 0 {
+        if line.trim_ascii() == b"Status: install ok installed" {
+            count += 1;
+        }
+        line.clear();
+    }
     Some(PackageCount {
         manager: "dpkg".to_string(),
         count,
@@ -47,7 +57,6 @@ fn count_dpkg() -> Option<PackageCount> {
 }
 
 fn count_rpm() -> Option<PackageCount> {
-    which("rpm")?;
     let out = Command::new("rpm")
         .args(["-qa", "--qf", "\n"])
         .output()
@@ -63,7 +72,6 @@ fn count_rpm() -> Option<PackageCount> {
 }
 
 fn count_flatpak() -> Option<PackageCount> {
-    which("flatpak")?;
     let out = Command::new("flatpak")
         .args(["list", "--app", "--columns=application"])
         .output()
@@ -100,14 +108,6 @@ fn count_snap() -> Option<PackageCount> {
         manager: "snap".to_string(),
         count,
     })
-}
-
-fn which(bin: &str) -> Option<()> {
-    let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(bin))
-        .find(|candidate| candidate.is_file())
-        .map(|_| ())
 }
 
 pub fn collect() -> PackageInfo {
