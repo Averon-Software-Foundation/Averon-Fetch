@@ -4,7 +4,9 @@
 
 A modern, lightweight system information utility written in Rust for Linux.
 
-Developed by the [Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+Developed by the:
+[Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+[Averon Software Foundation Website](https://averon-software-foundation.github.io/averon-site/).
 
 Averon Fetch displays detailed system information in the terminal with a clean, structured layout. It is designed as an independent alternative to tools such as Fastfetch, with its own aesthetic and configuration system built from the ground up using Rust.
 
@@ -412,7 +414,7 @@ averon-fetch --format json
 ```json
 {
   "header": {
-    "username": "josh",
+    "username": "username",
     "hostname": "hostname"
   },
   "modules": [
