@@ -1,6 +1,6 @@
 # Averon Fetch
 
-A modern, lightweight system information utility written in Rust.
+A modern, lightweight system information utility written in Rust for Linux.
 
 Developed by the [Averon Software Foundation](https://github.com/Averon-Software-Foundation).
 
