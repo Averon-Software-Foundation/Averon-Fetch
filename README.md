@@ -1,6 +1,5 @@
 # Averon Fetch
 
-[![CI](https://github.com/Averon-Software-Foundation/Averon-Fetch/actions/workflows/build.yml/badge.svg)](https://github.com/Averon-Software-Foundation/Averon-Fetch/actions/workflows/build.yml)
 
 A modern, lightweight system information utility written in Rust for Linux.
 
