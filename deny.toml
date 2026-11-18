@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Dependency policy for cargo-deny. Run locally with:
+#   cargo deny check
+#
+# Keep the target list in sync with the platforms the project supports and
+# tests in CI. Restricting it avoids evaluating Windows/macOS-only transitive
+# dependencies that are never compiled on Linux.
+
+[graph]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-gnu",
+  "aarch64-unknown-linux-musl",
+]
+
+[advisories]
+version = 2
+yanked = "deny"
+ignore = []
+
+[licenses]
+version = 2
+# GPL-3.0-or-later is this project's own licence. The rest are permissive
+# licences used by the dependency tree; add entries deliberately, not by
+# widening to "any".
+allow = [
+  "Apache-2.0",
+  "GPL-3.0-or-later",
+  "MIT",
+  "Unicode-3.0",
+  "Unlicense",
+]
+confidence-threshold = 0.93
+
+[bans]
+multiple-versions = "warn"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

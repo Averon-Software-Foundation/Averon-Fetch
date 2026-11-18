@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 #[cfg(unix)]
 pub fn is_stdout_tty() -> bool {
     unsafe { libc::isatty(libc::STDOUT_FILENO) == 1 }

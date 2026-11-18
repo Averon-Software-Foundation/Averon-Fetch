@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static SHOW_ERRORS: AtomicBool = AtomicBool::new(false);
