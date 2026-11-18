@@ -1,10 +1,13 @@
 name: CI
 
 on:
-  # Every branch gets CI so each pushed commit is checked. Tags are included
-  # so release candidates are tested before the release jobs run.
+  # Only the default branch runs CI on push: every other branch is covered by
+  # the pull request trigger below. Running both on the same commit left two
+  # check suites on a PR's head commit, so cancelling the duplicate push run
+  # showed the pull request as failing. Tags are included so release candidates
+  # are tested before the release jobs run.
   push:
-    branches: [ '**' ]
+    branches: [ main ]
     tags: [ 'v*' ]
   # All pull requests, regardless of their target branch.
   pull_request:
