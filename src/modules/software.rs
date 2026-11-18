@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::config::Config;
 use crate::modules::{Line, Module};
 use crate::system::SystemInfo;

@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
 [package]
 name = "averon-fetch"
 version = "0.1.1"
@@ -22,8 +24,20 @@ path = "src/main.rs"
 name = "av-fetch"
 path = "src/bin/av-fetch.rs"
 
+# Generates shell completions and man pages for release archives. Kept behind
+# the `docs` feature so the shipped binaries do not carry these dependencies.
+[[bin]]
+name = "gen-docs"
+path = "src/bin/gen-docs.rs"
+required-features = ["docs"]
+
+[features]
+docs = ["dep:clap_complete", "dep:clap_mangen"]
+
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+clap_complete = { version = "4", optional = true }
+clap_mangen = { version = "0.2", optional = true }
 # Only `System` (CPU, memory, hostname, kernel, uptime) is used. The default
 # features pull in disk/network/user/component support and `rayon`, none of
 # which this tool needs.

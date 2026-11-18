@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::fs;
 use std::time::{Duration, Instant};
 use sysinfo::System;
@@ -247,14 +249,20 @@ mod tests {
 
     #[test]
     fn test_temp_reading_ignores_zero_and_invalid() {
-        let dir = std::env::temp_dir().join("averon-fetch-cpu-temp-test");
-        let _ = fs::create_dir_all(&dir);
+        // Unique per process so parallel test binaries cannot share a file.
+        let dir =
+            std::env::temp_dir().join(format!("averon-fetch-cpu-temp-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
         let path = dir.join("temp1_input");
+
         fs::write(&path, "42000\n").unwrap();
         assert_eq!(read_temp_millidegrees(&path.to_string_lossy()), Some(42.0));
         fs::write(&path, "0\n").unwrap();
         assert_eq!(read_temp_millidegrees(&path.to_string_lossy()), None);
         fs::write(&path, "not-a-number\n").unwrap();
         assert_eq!(read_temp_millidegrees(&path.to_string_lossy()), None);
+
+        fs::remove_dir_all(&dir).unwrap();
     }
 }
