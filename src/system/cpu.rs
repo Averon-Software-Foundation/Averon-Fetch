@@ -1,6 +1,10 @@
 use std::fs;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use sysinfo::System;
+
+/// Minimum window between two `/proc/stat` samples. Shorter intervals make the
+/// rounding noise in the counters dominate the result.
+const USAGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -70,19 +74,38 @@ fn read_cpu_times() -> Option<CpuTimes> {
     Some(CpuTimes { idle, total })
 }
 
-fn sample_cpu_usage() -> Option<f32> {
-    let first = read_cpu_times()?;
-    std::thread::sleep(Duration::from_millis(100));
-    let second = read_cpu_times()?;
+/// A CPU usage measurement in two halves. Taking the baseline sample before
+/// the other collectors run means their work counts towards the sampling
+/// window, so the wait is usually free instead of a fixed 100 ms delay.
+pub struct UsageProbe {
+    first: CpuTimes,
+    started: Instant,
+}
 
-    let total_delta = second.total.saturating_sub(first.total);
-    let idle_delta = second.idle.saturating_sub(first.idle);
-    if total_delta == 0 {
-        return None;
+impl UsageProbe {
+    pub fn start() -> Option<Self> {
+        Some(Self {
+            first: read_cpu_times()?,
+            started: Instant::now(),
+        })
     }
 
-    let busy = total_delta.saturating_sub(idle_delta) as f64;
-    Some(((busy / total_delta as f64) * 100.0) as f32)
+    pub fn finish(self) -> Option<f32> {
+        let elapsed = self.started.elapsed();
+        if elapsed < USAGE_SAMPLE_INTERVAL {
+            std::thread::sleep(USAGE_SAMPLE_INTERVAL - elapsed);
+        }
+
+        let second = read_cpu_times()?;
+        let total_delta = second.total.saturating_sub(self.first.total);
+        let idle_delta = second.idle.saturating_sub(self.first.idle);
+        if total_delta == 0 {
+            return None;
+        }
+
+        let busy = total_delta.saturating_sub(idle_delta) as f64;
+        Some(((busy / total_delta as f64) * 100.0) as f32)
+    }
 }
 
 fn read_temp_millidegrees(path: &str) -> Option<f32> {
@@ -173,7 +196,7 @@ fn cpu_temperature() -> Option<f32> {
     fallback
 }
 
-pub fn collect(sys: &System, want_usage: bool, want_temperature: bool) -> CpuInfo {
+pub fn collect(sys: &System, usage: Option<UsageProbe>, want_temperature: bool) -> CpuInfo {
     let cpus = sys.cpus();
 
     let name = {
@@ -204,7 +227,7 @@ pub fn collect(sys: &System, want_usage: bool, want_temperature: bool) -> CpuInf
         physical_cores,
         logical_cores,
         frequency_mhz,
-        usage_percent: if want_usage { sample_cpu_usage() } else { None },
+        usage_percent: usage.and_then(UsageProbe::finish),
         temperature_c: if want_temperature {
             cpu_temperature()
         } else {

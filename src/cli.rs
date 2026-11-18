@@ -83,8 +83,9 @@ pub struct Args {
         long = "module",
         short = 'm',
         value_name = "MODULE",
+        value_delimiter = ',',
         action = clap::ArgAction::Append,
-        help = "Show only specific module(s) (can be repeated)"
+        help = "Show only specific module(s) (comma-separated or repeated)"
     )]
     pub module: Vec<String>,
 
@@ -218,5 +219,11 @@ mod tests {
     #[test]
     fn test_cli_invalid_colour_mode_rejected() {
         assert!(Args::try_parse_from(["averon-fetch", "--color", "sometimes"]).is_err());
+    }
+
+    #[test]
+    fn test_cli_module_list_accepts_commas_and_repeats() {
+        let args = Args::parse_from(["averon-fetch", "-m", "cpu,memory", "-m", "gpu"]);
+        assert_eq!(args.module, ["cpu", "memory", "gpu"]);
     }
 }

@@ -3,6 +3,7 @@ pub mod battery;
 pub mod cpu;
 pub mod desktop;
 pub mod display;
+mod dmi;
 pub mod general;
 pub mod gpu;
 pub mod locale;
@@ -108,6 +109,17 @@ impl CollectPlan {
 }
 
 pub fn collect(plan: &CollectPlan) -> SystemInfo {
+    let plan = *plan;
+
+    // Take the usage baseline before starting the other collectors: their
+    // runtime then counts towards the sampling window instead of adding a
+    // fixed delay on top of it.
+    let usage = if plan.cpu_usage {
+        cpu::UsageProbe::start()
+    } else {
+        None
+    };
+
     let mut sys = sysinfo::System::new();
     if plan.cpu {
         sys.refresh_cpu_all();
@@ -116,82 +128,78 @@ pub fn collect(plan: &CollectPlan) -> SystemInfo {
         sys.refresh_memory();
     }
 
+    // Most collectors either spawn a helper process or walk sysfs, so they
+    // spend their time waiting rather than computing. Run them concurrently to
+    // make the total the slowest collector instead of the sum of all of them.
+    // Longest-running collectors are started first so they finish earliest.
+    let desktop = spawn_collector(plan.desktop, desktop::collect);
+    let gpu = spawn_collector(plan.gpu, move || gpu::collect(plan.gpu_details));
+    let packages = spawn_collector(plan.packages, packages::collect);
+    let audio = spawn_collector(plan.audio, audio::collect);
+    let display = spawn_collector(plan.display, display::collect);
+    let storage = spawn_collector(plan.storage, storage::collect);
+    let network = spawn_collector(plan.network, network::collect);
+    let shell = spawn_collector(plan.shell, shell::collect);
+    let battery = spawn_collector(plan.battery, battery::collect);
+    let os = spawn_collector(plan.os, os::collect);
+    let locale = spawn_collector(plan.locale, locale::collect);
+    let motherboard = spawn_collector(plan.motherboard, motherboard::collect);
+
+    // These read from the shared `System` handle and are already cached, so
+    // collecting them here is cheaper than moving the handle into a thread.
+    let general = if plan.general {
+        general::collect(&sys)
+    } else {
+        general::GeneralInfo::default()
+    };
+    let memory = if plan.memory {
+        memory::collect(&sys)
+    } else {
+        memory::MemoryInfo::default()
+    };
+
     SystemInfo {
-        general: if plan.general {
-            general::collect(&sys)
-        } else {
-            general::GeneralInfo::default()
-        },
-        os: if plan.os {
-            os::collect()
-        } else {
-            os::OsInfo::default()
-        },
+        general,
+        memory,
+        os: join_collector(os).unwrap_or_default(),
+        gpu: join_collector(gpu).unwrap_or_default(),
+        storage: join_collector(storage).unwrap_or_default(),
+        network: join_collector(network).unwrap_or_default(),
+        display: join_collector(display).unwrap_or_default(),
+        desktop: join_collector(desktop).unwrap_or_default(),
+        packages: join_collector(packages).unwrap_or_default(),
+        shell: join_collector(shell).unwrap_or_default(),
+        locale: join_collector(locale).unwrap_or_default(),
+        motherboard: join_collector(motherboard).unwrap_or_default(),
+        battery: join_collector(battery).unwrap_or_default(),
+        audio: join_collector(audio).unwrap_or_default(),
+        // Last, so the usage window covers the collectors joined above.
         cpu: if plan.cpu {
-            cpu::collect(&sys, plan.cpu_usage, plan.cpu_temperature)
+            cpu::collect(&sys, usage, plan.cpu_temperature)
         } else {
             cpu::CpuInfo::default()
         },
-        gpu: if plan.gpu {
-            gpu::collect(plan.gpu_details)
-        } else {
-            Vec::new()
-        },
-        memory: if plan.memory {
-            memory::collect(&sys)
-        } else {
-            memory::MemoryInfo::default()
-        },
-        storage: if plan.storage {
-            storage::collect()
-        } else {
-            Vec::new()
-        },
-        network: if plan.network {
-            network::collect()
-        } else {
-            Vec::new()
-        },
-        display: if plan.display {
-            display::collect()
-        } else {
-            Vec::new()
-        },
-        desktop: if plan.desktop {
-            desktop::collect()
-        } else {
-            desktop::DesktopInfo::default()
-        },
-        packages: if plan.packages {
-            packages::collect()
-        } else {
-            packages::PackageInfo::default()
-        },
-        shell: if plan.shell {
-            shell::collect()
-        } else {
-            shell::ShellInfo::default()
-        },
-        locale: if plan.locale {
-            locale::collect()
-        } else {
-            locale::LocaleInfo::default()
-        },
-        motherboard: if plan.motherboard {
-            motherboard::collect()
-        } else {
-            motherboard::MotherboardInfo::default()
-        },
-        battery: if plan.battery {
-            battery::collect()
-        } else {
-            Vec::new()
-        },
-        audio: if plan.audio {
-            audio::collect()
-        } else {
-            audio::AudioInfo::default()
-        },
+    }
+}
+
+fn spawn_collector<T, F>(enabled: bool, collect: F) -> Option<std::thread::JoinHandle<T>>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    if enabled {
+        Some(std::thread::spawn(collect))
+    } else {
+        None
+    }
+}
+
+fn join_collector<T>(handle: Option<std::thread::JoinHandle<T>>) -> Option<T> {
+    let handle = handle?;
+    match handle.join() {
+        Ok(value) => Some(value),
+        // Surface a panicking collector instead of silently dropping its row.
+        Err(payload) => std::panic::resume_unwind(payload),
     }
 }
 
@@ -242,6 +250,28 @@ mod tests {
         assert!(plan.general);
         assert!(plan.os);
         assert!(!plan.cpu);
+    }
+
+    #[test]
+    fn test_collect_skips_unrequested_collectors() {
+        let info = collect(&CollectPlan::default());
+        assert!(info.gpu.is_empty());
+        assert!(info.storage.is_empty());
+        assert!(info.network.is_empty());
+        assert!(info.packages.counts.is_empty());
+        assert!(info.cpu.name.is_none());
+        assert_eq!(info.cpu.logical_cores, 0);
+    }
+
+    #[test]
+    fn test_collect_returns_requested_collector_data() {
+        let plan = CollectPlan {
+            os: true,
+            ..CollectPlan::default()
+        };
+        let info = collect(&plan);
+        assert!(info.os.kernel.is_some());
+        assert!(info.gpu.is_empty());
     }
 
     fn selection_with(ids: &[&'static str]) -> Selection {

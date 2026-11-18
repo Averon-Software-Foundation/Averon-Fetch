@@ -1,5 +1,6 @@
 use std::env;
 use std::fs;
+use std::path::PathBuf;
 use std::process::Command;
 
 #[derive(Debug, Clone, Default)]
@@ -181,11 +182,22 @@ struct GtkSettings {
     font: Option<String>,
 }
 
+fn config_home() -> PathBuf {
+    if let Some(xdg) = env::var_os("XDG_CONFIG_HOME") {
+        let path = PathBuf::from(xdg);
+        if !path.as_os_str().is_empty() {
+            return path;
+        }
+    }
+
+    PathBuf::from(env::var("HOME").unwrap_or_default()).join(".config")
+}
+
 fn read_gtk_settings() -> GtkSettings {
-    let home = env::var("HOME").unwrap_or_default();
+    let base = config_home();
     let candidates = [
-        format!("{}/.config/gtk-4.0/settings.ini", home),
-        format!("{}/.config/gtk-3.0/settings.ini", home),
+        base.join("gtk-4.0").join("settings.ini"),
+        base.join("gtk-3.0").join("settings.ini"),
     ];
 
     for path in &candidates {
@@ -211,6 +223,7 @@ fn read_gtk_settings() -> GtkSettings {
         }
     }
 
+    let home = env::var("HOME").unwrap_or_default();
     let cursor_theme = read_default_cursor_theme(&home);
 
     GtkSettings {
@@ -238,6 +251,9 @@ fn parse_ini_section(content: &str, section: &str) -> std::collections::HashMap<
 
     for line in content.lines() {
         let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
         if line.starts_with('[') && line.ends_with(']') {
             in_section = &line[1..line.len() - 1] == section;
             continue;
@@ -281,6 +297,17 @@ mod tests {
             settings.get("gtk-theme-name").map(String::as_str),
             Some("Adwaita")
         );
+    }
+
+    #[test]
+    fn test_parse_ini_section_skips_comments() {
+        let content = "[Settings]\n# gtk-theme-name=Commented\n; gtk-icon-theme-name=AlsoCommented\ngtk-theme-name=Adwaita\n";
+        let settings = parse_ini_section(content, "Settings");
+        assert_eq!(
+            settings.get("gtk-theme-name").map(String::as_str),
+            Some("Adwaita")
+        );
+        assert!(!settings.contains_key("gtk-icon-theme-name"));
     }
 
     #[test]

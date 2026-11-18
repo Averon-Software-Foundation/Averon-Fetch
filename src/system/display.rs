@@ -186,14 +186,18 @@ fn collect_from_drm(xrandr_info: &HashMap<String, XrandrOutputInfo>) -> Vec<Disp
         return vec![];
     }
 
-    let entries = match fs::read_dir(drm_dir) {
-        Ok(e) => e,
-        Err(_) => return vec![],
+    let Ok(entries) = fs::read_dir(drm_dir) else {
+        return vec![];
     };
+
+    // Directory order is not defined, so sort connectors to keep the
+    // rendered display order stable between runs.
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(|entry| entry.file_name());
 
     let mut displays = Vec::new();
 
-    for entry in entries.flatten() {
+    for entry in entries {
         let entry_path = entry.path();
         let entry_name = entry.file_name().to_string_lossy().to_string();
 
@@ -243,21 +247,29 @@ fn collect_from_drm(xrandr_info: &HashMap<String, XrandrOutputInfo>) -> Vec<Disp
     displays
 }
 
+fn displays_from_xrandr(xrandr_info: &HashMap<String, XrandrOutputInfo>) -> Vec<DisplayInfo> {
+    let mut entries: Vec<_> = xrandr_info.iter().collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+
+    entries
+        .into_iter()
+        .map(|(conn, xi)| DisplayInfo {
+            name: None,
+            connector: Some(conn.clone()),
+            resolution_width: xi.width,
+            resolution_height: xi.height,
+            refresh_rate: xi.refresh_rate,
+            is_primary: xi.is_primary,
+        })
+        .collect()
+}
+
 pub fn collect() -> Vec<DisplayInfo> {
     let xrandr_info = xrandr_extra_info();
     let mut displays = collect_from_drm(&xrandr_info);
 
     if displays.is_empty() {
-        for (conn, xi) in &xrandr_info {
-            displays.push(DisplayInfo {
-                name: None,
-                connector: Some(conn.clone()),
-                resolution_width: xi.width,
-                resolution_height: xi.height,
-                refresh_rate: xi.refresh_rate,
-                is_primary: xi.is_primary,
-            });
-        }
+        displays = displays_from_xrandr(&xrandr_info);
     }
 
     if !displays.is_empty() && !displays.iter().any(|d| d.is_primary) {
@@ -265,4 +277,37 @@ pub fn collect() -> Vec<DisplayInfo> {
     }
 
     displays
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_xrandr_fallback_is_sorted_by_connector() {
+        let mut info = HashMap::new();
+        info.insert(
+            String::from("HDMI-1"),
+            XrandrOutputInfo {
+                refresh_rate: Some(60.0),
+                is_primary: false,
+                width: Some(1920),
+                height: Some(1080),
+            },
+        );
+        info.insert(
+            String::from("DP-1"),
+            XrandrOutputInfo {
+                refresh_rate: Some(144.0),
+                is_primary: true,
+                width: Some(2560),
+                height: Some(1440),
+            },
+        );
+
+        let displays = displays_from_xrandr(&info);
+        assert_eq!(displays.len(), 2);
+        assert_eq!(displays[0].connector.as_deref(), Some("DP-1"));
+        assert_eq!(displays[1].connector.as_deref(), Some("HDMI-1"));
+    }
 }

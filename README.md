@@ -1,8 +1,10 @@
 # Averon Fetch
 
-A modern, lightweight system information utility written in Rust.
+A modern, lightweight system information utility written in Rust for Linux.
 
-Developed by the [Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+Developed by the:
+[Averon Software Foundation](https://github.com/Averon-Software-Foundation).
+[Averon Software Foundation Website](https://averon-software-foundation.github.io/averon-site/).
 
 Averon Fetch displays detailed system information in the terminal with a clean, structured layout. It is designed as an independent alternative to tools such as Fastfetch, with its own aesthetic and configuration system built from the ground up using Rust.
 
@@ -127,6 +129,7 @@ averon-fetch --no-logo                           Display information without the
 averon-fetch --list-modules                      List modules and enabled state
 averon-fetch --module cpu                        Show only CPU information
 averon-fetch -m cpu -m memory                    Show CPU and memory in that order
+averon-fetch -m cpu,memory                       Same, comma-separated
 averon-fetch --all                               Show all modules, ignoring config visibility
 averon-fetch --format json                       Structured JSON output
 averon-fetch --format text                       Terminal text output (default)
@@ -259,8 +262,9 @@ Icons = "Icon Theme"
 ```
 
 Logo width and scale are both supported. `scale = 2.0` doubles the built-in
-logo, while `width = 40` sets a target width directly. If both are set,
-`scale` wins. A custom `custom_ascii` block replaces the built-in mark; its
+logo, while `width = 40` sets a target width directly. When `scale` is set to
+anything other than its default of `1.0`, it takes precedence over `width`.
+A custom `custom_ascii` block replaces the built-in mark; its
 width is measured from the longest line, and it is coloured with
 `logo_primary` before any padding or truncation needed to fit the terminal.
 
@@ -279,10 +283,13 @@ TOML.
 Colour is resolved in this order:
 
 1. `--pipe` and `--no-color` force plain output.
-2. `--color never` and `--color always` override automatic detection.
-3. `auto` checks `NO_COLOR`, `TERM=dumb`, whether stdout is a terminal, and
-   `[general] colour`.
-4. `[terminal] colour` can still force `never` or `always` from the config.
+2. `--color never` forces plain output, and `--color always` forces colour,
+   including when stdout is piped or `NO_COLOR` is set.
+3. Otherwise (`auto`), `NO_COLOR`, `TERM=dumb`, non-TTY stdout, or
+   `[general] colour = false` disable colour.
+4. In `auto` mode, `[terminal] colour = "never"` disables colour and
+   `[terminal] colour = "always"` keeps it enabled after step 3; it cannot
+   override `--pipe`, `--no-color`, or the automatic checks.
 
 Further details:
 
@@ -290,6 +297,9 @@ Further details:
 - `NO_COLOR` disables automatic colour whenever it is present, even if it is
   empty. An explicit `--color always` still overrides it.
 - `--color always` is the explicit opt-in that permits ANSI output when piped.
+- `[terminal] colour` is consulted only in `auto` mode. Unlike `--color
+  always`, it cannot enable colour when stdout is piped, `NO_COLOR` is set,
+  `TERM=dumb`, or `[general] colour = false`.
 - `truecolour = false` uses a 256-colour approximation.
 - If the terminal does not advertise 24-bit support, `auto` uses 256 colours.
   `COLORTERM=truecolor` or `COLORTERM=24bit` enables true colour.
@@ -337,10 +347,8 @@ shown with placeholder values.
 
 Some values depend on the session and the available helpers:
 
-- `Display` reads connector state from sysfs. Refresh rate and the primary
-  marker come from `xrandr`, so they are not reported under a pure Wayland
-  session. If no primary display is reported, the first one is treated as
-  primary.
+- `Display` reads connector state from sysfs. Refresh rate comes from
+  `xrandr`, so it is not reported under a pure Wayland session.
 - `Disk` reads mount points from `/proc/self/mounts` and sizes through
   `statvfs`, so it does not need GNU `df` (which BusyBox lacks) and handles
   mount points containing spaces.
@@ -383,7 +391,8 @@ Averon Fetch keeps work proportional to what is displayed:
   queried when their modules are disabled.
 - `nvidia-smi` is called at most once, and only when a selected GPU detail
   module needs data that sysfs could not provide.
-- Network addresses are collected with one `ip` invocation.
+- Network addresses are collected with `getifaddrs`; the `ip` command is only
+  used as a fallback when that call fails.
 - Terminal width is read with an ioctl instead of a `stty` subprocess.
 - CPU usage uses a short `/proc/stat` sample and is disabled by default.
 
@@ -398,7 +407,7 @@ averon-fetch --format json
 ```json
 {
   "header": {
-    "username": "josh",
+    "username": "username",
     "hostname": "hostname"
   },
   "modules": [
@@ -425,17 +434,29 @@ rules as the terminal output.
 ---
 
 ## Package Manager Support
-None yet.
 
+Package counts are read from the local package databases and tools listed
+below. No package manager is required for Averon Fetch itself to run.
+
+| Manager | Detection Method |
+|---------|-----------------|
+| pacman | `/var/lib/pacman/local/` |
+| apt/dpkg | `/var/lib/dpkg/status` |
+| rpm | `rpm -qa` |
+| flatpak | `flatpak list` |
+| snap | `/snap/` directory |
+
+---
 
 ## Building from Source
 
-**Requirements:** Rust 1.85 or later, Cargo However we recommend using the latest one in arch
+**Requirements:** Rust 1.85 or later and Cargo. Using the latest stable
+toolchain is recommended.
 
-Builds run natively on x86_64 and ARM64 (aarch64) Linux which we test for remotely via our CI and locally on Reubens Pis. (soon) Release binaries are
-produced for both architectures on matching runners, so no cross-compilation
-toolchain is required. Published release binaries are built for the
-`*-unknown-linux-musl` targets and then verified to be statically linked:
+Builds run natively on x86_64 and ARM64 (aarch64) Linux. CI builds and tests
+both architectures on matching runners, so no cross-compilation toolchain is
+required. Published release binaries are built for the `*-unknown-linux-musl`
+targets and then verified to be statically linked:
 
 ```sh
 case "$(uname -m)" in
@@ -461,7 +482,7 @@ cargo clippy --locked --all-targets -- -D warnings
 
 ## Contributing
 
-Contributions are welcome. Please follow the Averon Software Foundation project conventions when submitting patches or pull requests. Ensure all code is formatted with `cargo fmt` and passes `cargo clippy` before submission. Open an issue to discuss significant changes before beginning work.
+Contributions are welcome. Please follow general etiquette of contribution. Any contributions you wish to make, please do so through Pull Requests (PR's) with a rough description of what your change is and we'll check it. Furthermore, any contributions must follow our [AI-Policy](https://github.com/Averon-Software-Foundation/AI-Policy). We appreciate all contributions.
 
 ---
 
@@ -470,4 +491,9 @@ Contributions are welcome. Please follow the Averon Software Foundation project 
 Averon Fetch is licensed under the **GNU General Public License v3.0**.
 
 See the [LICENSE](LICENSE) file for full terms.
-tldr : You may copy, distribute and modify the software as long as you track changes/dates in source files. Any modifications to or software including (via compiler) GPL-licensed code must also be made available under the GPL along with build & install instruction ( None of that is legal advice and is extremely shortened) 
+This is a short, non-authoritative summary: you may copy, distribute, and
+modify the software as long as changes are tracked in the source files, and
+any modified version distributed, including GPL-licensed code compiled into
+it, is made available under the GPL together with build and install
+instructions. This is not legal advice; see the LICENSE file for the full
+terms.
