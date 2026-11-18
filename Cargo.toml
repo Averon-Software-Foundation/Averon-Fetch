@@ -4,7 +4,7 @@
 name = "averon-fetch"
 version = "0.1.1"
 edition = "2021"
-rust-version = "1.85"
+rust-version = "1.95"
 default-run = "averon-fetch"
 authors = ["Averon Software Foundation"]
 description = "A modern, lightweight system information utility"
@@ -37,14 +37,14 @@ docs = ["dep:clap_complete", "dep:clap_mangen"]
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 clap_complete = { version = "4", optional = true }
-clap_mangen = { version = "0.2", optional = true }
+clap_mangen = { version = "0.3", optional = true }
 # Only `System` (CPU, memory, hostname, kernel, uptime) is used. The default
 # features pull in disk/network/user/component support and `rayon`, none of
 # which this tool needs.
-sysinfo = { version = "0.32", default-features = false, features = ["system"] }
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
+toml = "1.2"
 libc = "0.2"
 
 [profile.release]

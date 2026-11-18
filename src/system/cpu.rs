@@ -209,7 +209,7 @@ pub fn collect(sys: &System, usage: Option<UsageProbe>, want_temperature: bool) 
     };
 
     let logical_cores = cpus.len();
-    let physical_cores = sys.physical_core_count();
+    let physical_cores = System::physical_core_count().ok();
 
     let frequency_mhz = if cpus.is_empty() {
         None

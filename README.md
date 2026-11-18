@@ -457,7 +457,7 @@ below. No package manager is required for Averon Fetch itself to run.
 
 ## Building from Source
 
-**Requirements:** Rust 1.85 or later and Cargo. Using the latest stable
+**Requirements:** Rust 1.95 or later and Cargo. Using the latest stable
 toolchain is recommended.
 
 Builds run natively on x86_64 and ARM64 (aarch64) Linux. CI builds and tests

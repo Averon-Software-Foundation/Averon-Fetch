@@ -216,7 +216,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rust: ['1.85.0']
+        rust: ['1.95.0']
 
     steps:
       - name: Install dependencies
