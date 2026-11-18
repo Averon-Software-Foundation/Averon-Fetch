@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::colour::{paint, ColourDepth, Palette};
 use crate::config::Config;
 use crate::text::{char_len, pad_visible};

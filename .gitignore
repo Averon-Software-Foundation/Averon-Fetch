@@ -12,6 +12,9 @@ lcov.info
 /rootfs/
 /alpine-all.json
 
+# Generated man pages and shell completions
+/docs/
+
 # Editor and OS noise
 .DS_Store
 ._*

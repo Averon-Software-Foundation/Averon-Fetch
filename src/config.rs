@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use crate::colour::ColorChoice;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -78,6 +80,8 @@ pub struct ModulesConfig {
     pub terminal: bool,
     pub display: bool,
     pub desktop: bool,
+    // Accept the module id used by `--module` and `[modules] order`.
+    #[serde(alias = "wm")]
     pub window_manager: bool,
     pub display_server: bool,
     pub theme: bool,

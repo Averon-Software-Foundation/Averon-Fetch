@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use std::fs;
 
 /// Firmware often fills DMI fields with placeholder text instead of a real

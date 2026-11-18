@@ -100,6 +100,10 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         uses: actions/checkout@v7
 
       - name: Cache Cargo registry
@@ -116,12 +120,28 @@ jobs:
         run: cargo fmt --all --check
 
       - name: Clippy
-        run: cargo clippy --locked --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      # The release archive's completions and man pages come from a
+      # feature-gated helper, so compile it on every run, not only on tags.
+      - name: Check docs generator
+        run: cargo check --locked --features docs --bin gen-docs
 
       # Run the test suite before the expensive release-profile build so a
       # logic failure fails fast.
       - name: Run tests
         run: cargo test --locked --all-targets
+
+      # `--all-targets` skips documentation tests, so run those explicitly.
+      - name: Run documentation tests
+        run: cargo test --locked --doc
+
+      # Catch broken intra-doc links and malformed documentation while it is
+      # still cheap to fix.
+      - name: Build documentation
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --no-deps --all-features
 
       - name: Build (debug)
         run: cargo build --locked
@@ -186,7 +206,7 @@ jobs:
 
       - name: Upload musl binaries
         if: matrix.distro == 'debian' && startsWith(github.ref, 'refs/tags/v')
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: musl-${{ matrix.arch }}
           path: build/*
@@ -221,10 +241,10 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Cache Cargo registry
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
         with:
           path: |
             ~/.cargo/registry
@@ -238,8 +258,72 @@ jobs:
       - name: Build and test on minimum supported Rust
         run: |
           rustc --version | grep -F " ${{ matrix.rust }} "
+          cargo check --locked --features docs --bin gen-docs
           cargo build --locked --all-targets
           cargo test --locked --all-targets
+
+  # Dependency policy: advisories, licences, duplicate versions, and sources.
+  # Runs on every push and pull request, not just at release time.
+  deny:
+    name: Dependency policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@70f81531115945ba6eb6b941ec9d39d063438eb9 # v2
+        with:
+          command: check
+          arguments: --all-features
+
+  # Release archives include man pages and shell completions. Generating them
+  # here keeps the release job free of a Rust toolchain.
+  docs:
+    name: Generate completions and man pages
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Install Rust toolchain
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Trust workspace directory
+        run: git config --global --add safe.directory '*'
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Cache Cargo registry
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: docs-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            docs-cargo-
+
+      - name: Generate man pages and completions
+        run: |
+          cargo build --locked --features docs --bin gen-docs
+          ./target/debug/gen-docs docs
+          test -s docs/share/man/man1/averon-fetch.1
+          test -s docs/share/man/man1/av-fetch.1
+          test -s docs/share/bash-completion/completions/averon-fetch
+          test -s docs/share/zsh/site-functions/_averon-fetch
+          test -s docs/share/fish/vendor_completions.d/averon-fetch.fish
+
+      - name: Upload docs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: docs
+          path: docs
+          if-no-files-found: error
 
   release:
     name: Release build (${{ matrix.arch }})
@@ -247,7 +331,7 @@ jobs:
     # published archives are exactly the artifacts CI validated. The archive
     # metadata is fixed so repeated packaging of the same binaries is stable.
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [test, msrv]
+    needs: [test, msrv, docs]
     strategy:
       fail-fast: false
       matrix:
@@ -273,14 +357,31 @@ jobs:
         run: git config --global --add safe.directory '*'
 
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       # Catch a tag that does not match Cargo.toml before publishing artifacts
       # under the wrong version.
       - name: Verify tag matches package version
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
-          package_version="$(sed -n 's/^version = "\([^"]*\)"$/\1/p' Cargo.toml | head -n 1)"
+          # Read only the [package] table, tolerating arbitrary whitespace and
+          # other tables that may contain their own `version` keys.
+          package_version="$(
+            awk '
+              /^\[package\]$/ { in_package = 1; next }
+              /^\[/ { in_package = 0 }
+              in_package && /^version[[:space:]]*=/ {
+                sub(/^version[[:space:]]*=[[:space:]]*"/, "")
+                sub(/".*$/, "")
+                print
+                exit
+              }
+            ' Cargo.toml
+          )"
+          if [ -z "$package_version" ]; then
+            echo "could not read the package version from Cargo.toml" >&2
+            exit 1
+          fi
           if [ "$tag_version" != "$package_version" ]; then
             echo "tag $GITHUB_REF_NAME does not match Cargo.toml version $package_version" >&2
             exit 1
@@ -288,10 +389,16 @@ jobs:
           echo "tag $GITHUB_REF_NAME matches Cargo.toml version $package_version"
 
       - name: Download tested musl binaries
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: musl-${{ matrix.arch }}
           path: build
+
+      - name: Download generated docs
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          name: docs
+          path: docs
 
       # Artifact uploads do not preserve the executable bit, so restore it
       # before packaging and running the binaries.
@@ -325,6 +432,7 @@ jobs:
           mkdir -p "dist/${name}"
           install -m755 build/averon-fetch build/av-fetch "dist/${name}/"
           cp README.md LICENSE "dist/${name}/"
+          cp -R docs/share "dist/${name}/"
           tar --sort=name --mtime='@0' \
               --owner=0 --group=0 --numeric-owner \
               -czf "dist/${name}.tar.gz" -C dist "${name}"
@@ -346,9 +454,14 @@ jobs:
           "$dir/averon-fetch" --all --format json > smoke/all.json
           grep -Eq '"module"[[:space:]]*:[[:space:]]*"os"' smoke/all.json
           grep -Eq '"module"[[:space:]]*:[[:space:]]*"network"' smoke/all.json
+          test -s "$dir/share/man/man1/averon-fetch.1"
+          test -s "$dir/share/man/man1/av-fetch.1"
+          test -s "$dir/share/bash-completion/completions/averon-fetch"
+          test -s "$dir/share/zsh/site-functions/_averon-fetch"
+          test -s "$dir/share/fish/vendor_completions.d/averon-fetch.fish"
 
       - name: Upload release artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: release-linux-${{ matrix.arch }}
           path: dist/*
@@ -373,7 +486,7 @@ jobs:
 
     steps:
       - name: Download release artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           name: release-linux-${{ matrix.arch }}
           path: dist
@@ -400,10 +513,12 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Download release artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
         with:
           pattern: release-linux-*
           path: dist
@@ -414,6 +529,13 @@ jobs:
           cd dist
           sha256sum ./*.tar.gz > SHA256SUMS
           cat SHA256SUMS
+
+      # Publish SLSA build provenance for the archives, verifiable with
+      # `gh attestation verify <archive> --repo <owner>/<repo>`.
+      - name: Attest release archives
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4
+        with:
+          subject-path: 'dist/*.tar.gz'
 
       - name: Publish assets
         env:

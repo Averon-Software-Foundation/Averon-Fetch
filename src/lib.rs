@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 //! Averon Fetch: a lightweight Linux system information utility.
 //!
 //! The crate is primarily driven by the `averon-fetch` and `av-fetch`

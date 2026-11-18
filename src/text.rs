@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub fn visible_len(input: &str) -> usize {
     let mut length = 0usize;
     let mut in_escape = false;
