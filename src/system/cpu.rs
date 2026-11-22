@@ -9,7 +9,6 @@ use sysinfo::System;
 const USAGE_SAMPLE_INTERVAL: Duration = Duration::from_millis(100);
 
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct CpuInfo {
     pub name: Option<String>,
     pub arch: Option<String>,
