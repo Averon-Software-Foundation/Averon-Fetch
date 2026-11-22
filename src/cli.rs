@@ -6,7 +6,10 @@ use clap::{Parser, ValueEnum};
 #[derive(Parser, Debug)]
 #[command(
     name = "averon-fetch",
-    version,
+    // The project tags releases with four components (for example
+    // `0.1.1.1`), but Cargo requires a semver-compatible package version.
+    // Keep the user-visible version in sync with the release tag here.
+    version = "0.1.1.1",
     author,
     about = "A modern, lightweight system information utility",
     disable_version_flag = false,

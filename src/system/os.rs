@@ -5,7 +5,6 @@ use std::fs;
 use sysinfo::System;
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct OsInfo {
     pub name: Option<String>,
     pub version: Option<String>,

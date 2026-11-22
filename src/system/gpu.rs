@@ -116,43 +116,15 @@ fn gpu_name_from_sysfs(card_path: &str, vendor_id: u32) -> String {
     }
 }
 
-fn collect_from_sysfs() -> Option<Vec<GpuInfo>> {
-    let drm_dir = Path::new("/sys/class/drm");
-    if !drm_dir.exists() {
-        return None;
-    }
-
+fn collect_from_sysfs(cards: &[DrmCard]) -> Option<Vec<GpuInfo>> {
     let mut gpus: Vec<GpuInfo> = Vec::new();
-    let mut entries: Vec<_> = fs::read_dir(drm_dir)
-        .ok()?
-        .filter_map(|entry| entry.ok())
-        .collect();
-    entries.sort_by_key(|entry| entry.file_name());
 
-    for entry in entries {
-        let name_str = entry.file_name().to_string_lossy().to_string();
-        if !name_str.starts_with("card") {
+    for card in cards {
+        let Some(vendor_id) = card.vendor_id else {
             continue;
-        }
-        let after_card = &name_str["card".len()..];
-        if !after_card
-            .chars()
-            .next()
-            .is_some_and(|c| c.is_ascii_digit())
-            || after_card.contains('-')
-        {
-            continue;
-        }
-
-        let card_path = format!("/sys/class/drm/{name_str}");
-        let vendor_id = match sysfs_read(&format!("{card_path}/device/vendor"))
-            .and_then(|s| parse_vendor_id(&s))
-        {
-            Some(id) => id,
-            None => continue,
         };
 
-        let drm_driver = driver_from_uevent(&format!("{card_path}/device/uevent"));
+        let drm_driver = driver_from_uevent(&format!("{}/device/uevent", card.path));
         let driver = match vendor_id {
             VENDOR_NVIDIA => nvidia_driver_version()
                 .map(|version| format!("nvidia {version}"))
@@ -161,10 +133,10 @@ fn collect_from_sysfs() -> Option<Vec<GpuInfo>> {
         };
 
         gpus.push(GpuInfo {
-            name: gpu_name_from_sysfs(&card_path, vendor_id),
+            name: gpu_name_from_sysfs(&card.path, vendor_id),
             gpu_type: gpu_type_from_vendor(vendor_id),
             driver,
-            pci_slot: uevent_value(&format!("{card_path}/device/uevent"), "PCI_SLOT_NAME"),
+            pci_slot: card.slot.clone(),
             ..GpuInfo::default()
         });
     }
@@ -296,6 +268,7 @@ fn parse_lspci_mm_fields(line: &str) -> Vec<String> {
 struct DrmCard {
     slot: Option<String>,
     path: String,
+    vendor_id: Option<u32>,
 }
 
 fn drm_cards() -> Vec<DrmCard> {
@@ -325,8 +298,14 @@ fn drm_cards() -> Vec<DrmCard> {
                         .map(|name| name.to_string_lossy().to_string())
                 })
         });
+        let vendor_id =
+            sysfs_read(&format!("{path}/device/vendor")).and_then(|value| parse_vendor_id(&value));
 
-        cards.push(DrmCard { slot, path });
+        cards.push(DrmCard {
+            slot,
+            path,
+            vendor_id,
+        });
     }
 
     cards.sort_by(|a, b| a.path.cmp(&b.path));
@@ -377,14 +356,13 @@ fn hwmon_temperature(card_path: &str) -> Option<f32> {
     max_temp
 }
 
-fn enrich_from_sysfs(gpus: &mut [GpuInfo]) {
-    let cards = drm_cards();
+fn enrich_from_sysfs(gpus: &mut [GpuInfo], cards: &[DrmCard]) {
     if cards.is_empty() {
         return;
     }
 
     for (index, gpu) in gpus.iter_mut().enumerate() {
-        let Some(card) = card_for_gpu(gpu, &cards, index) else {
+        let Some(card) = card_for_gpu(gpu, cards, index) else {
             continue;
         };
 
@@ -540,12 +518,19 @@ pub fn collect(details: bool) -> Vec<GpuInfo> {
     };
 
     let mut gpus = collect_from_lspci();
+    // Both the sysfs fallback and the detail enrichment need the DRM card
+    // list, so build it once and share it.
+    let cards = if details || gpus.is_empty() {
+        drm_cards()
+    } else {
+        Vec::new()
+    };
     if gpus.is_empty() {
-        gpus = collect_from_sysfs().unwrap_or_default();
+        gpus = collect_from_sysfs(&cards).unwrap_or_default();
     }
 
     if details && !gpus.is_empty() {
-        enrich_from_sysfs(&mut gpus);
+        enrich_from_sysfs(&mut gpus, &cards);
 
         match nvidia_probe {
             Some(handle) => {

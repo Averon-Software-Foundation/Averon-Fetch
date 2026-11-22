@@ -230,10 +230,6 @@ impl ModulesConfig {
 }
 
 impl Config {
-    pub fn load() -> Self {
-        Self::load_from(&Self::path())
-    }
-
     pub fn load_from(path: &Path) -> Self {
         match std::fs::read_to_string(path) {
             Ok(contents) => match toml::from_str::<Config>(&contents) {
@@ -307,7 +303,15 @@ impl Config {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, DEFAULT_CONFIG_TEMPLATE)?;
+
+        // Write beside the destination and rename, so an interrupted write
+        // never leaves a truncated config behind.
+        let temp = path.with_extension(format!("tmp.{}", std::process::id()));
+        std::fs::write(&temp, DEFAULT_CONFIG_TEMPLATE)?;
+        if let Err(error) = std::fs::rename(&temp, path) {
+            let _ = std::fs::remove_file(&temp);
+            return Err(error);
+        }
         Ok(true)
     }
 }

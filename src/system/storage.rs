@@ -5,7 +5,6 @@ use std::fs;
 use std::process::Command;
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct DiskInfo {
     pub device: String,
     pub mount_point: String,

@@ -6,7 +6,6 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 use std::process::Command;
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct NetworkInterface {
     pub name: String,
     pub ip_v4: Vec<String>,

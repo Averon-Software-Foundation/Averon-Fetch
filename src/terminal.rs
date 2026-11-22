@@ -10,16 +10,6 @@ pub fn is_stdout_tty() -> bool {
     false
 }
 
-pub fn supports_colour() -> bool {
-    if std::env::var_os("NO_COLOR").is_some() {
-        return false;
-    }
-    if std::env::var("TERM").as_deref() == Ok("dumb") {
-        return false;
-    }
-    is_stdout_tty()
-}
-
 pub fn terminal_width() -> usize {
     if let Ok(cols) = std::env::var("COLUMNS") {
         if let Ok(n) = cols.parse::<usize>() {

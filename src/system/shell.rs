@@ -200,10 +200,14 @@ fn walk_proc_for_terminal() -> Option<String> {
             break;
         }
 
-        let comm = read_proc_comm(ppid)?;
-
-        if is_known_terminal(&comm) {
-            return Some(comm);
+        // The parent can exit between reading its status and its comm file.
+        // Skip only the terminal check in that case and keep walking upward:
+        // its own parent may still be readable (for example, if it is a
+        // zombie waiting to be reaped).
+        if let Some(comm) = read_proc_comm(ppid) {
+            if is_known_terminal(&comm) {
+                return Some(comm);
+            }
         }
 
         pid = ppid;

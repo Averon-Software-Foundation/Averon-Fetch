@@ -278,13 +278,6 @@ pub fn render_to_string(
     output
 }
 
-pub fn print_logo(config: &Config, depth: ColourDepth, palette: &Palette) {
-    print!(
-        "{}",
-        render_to_string(config, depth, palette, configured_width(config))
-    );
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,7 +3,6 @@
 use sysinfo::System;
 
 #[derive(Debug, Clone, Default)]
-#[allow(dead_code)]
 pub struct MemoryInfo {
     pub total_bytes: u64,
     pub used_bytes: u64,

@@ -212,10 +212,6 @@ fn join_collector<T>(handle: Option<std::thread::JoinHandle<T>>) -> Option<T> {
     }
 }
 
-pub fn collect_all() -> SystemInfo {
-    collect(&CollectPlan::all())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
